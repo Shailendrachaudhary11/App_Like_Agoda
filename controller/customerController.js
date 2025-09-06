@@ -73,7 +73,7 @@ exports.searchGuestHouses = async (req, res) => {
     try {
         const { name, address, city, state } = req.query;
 
-        let filter = {};
+        let filter = { status: "approved" };
 
         if (name) filter.name = new RegExp(name, "i"); // Case-insensitive search
         if (address) filter.address = new RegExp(address, "i");

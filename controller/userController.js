@@ -77,7 +77,7 @@ exports.login = async (req, res) => {
         }
 
         // Check approval for guesthouse_admin
-        if (!user.isVerified) {
+        if (user.status !== "approved") {
             console.warn(`[AUTH] Login failed: user not verified ${email}`);
             return res.status(403).json({
                 success: false,

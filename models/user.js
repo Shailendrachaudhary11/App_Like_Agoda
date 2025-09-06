@@ -11,7 +11,7 @@ const UserSchema = new mongoose.Schema({
         default: 'customer' 
     },
     profileImage: {type:String},
-    isVerified: { type: Boolean, default: false },
+    status: { type: String, enum: ['pending', 'approved', 'suspended'], default: 'pending' },
     createdAt: { type: Date, default: Date.now }
 });
 
