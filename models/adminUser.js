@@ -5,6 +5,8 @@ const AdminSchema = new mongoose.Schema({
     email: { type: String, unique: true, required: true },
     phone: String,
     password: { type: String, required: true }, // hashed
+    role: { type: String, default: 'admin' },
+    profileImage: {type:String},
     createdAt: { type: Date, default: Date.now }
 });
 

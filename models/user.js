@@ -10,6 +10,7 @@ const UserSchema = new mongoose.Schema({
         enum: [ 'guesthouse_admin', 'customer'], 
         default: 'customer' 
     },
+    profileImage: {type:String},
     isVerified: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
 });

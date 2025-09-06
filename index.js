@@ -3,7 +3,11 @@ const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const userRoutes = require('./routes/userRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const guestHouseRoutes=require('./routes/guesthouseRoutes')
+const guestHouseRoutes = require('./routes/guesthouseRoutes');
+const ensureUploadDirs = require("./utils/createUploadDirs");
+const customerRoutes = require("./routes/customerRoutes")
+const promoRoutes = require("./routes/promoRoutes")
+
 
 dotenv.config();
 const app = express();
@@ -13,19 +17,33 @@ connectDB();
 
 // middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// routes for customer or guestHouse Owner
-app.use('/api/userAuth', userRoutes);
+
+ensureUploadDirs([
+  "uploads/guestHouse",
+  "uploads/users",
+  "uploads/admin",
+  "uploads/rooms"
+]);
 
 // route for admin Registration
 app.use('/api/adminAuth', adminRoutes);
 
-// routes for work with guestHouese
-app.use('/api/guestHouse',guestHouseRoutes)
+// route for promos
+app.use('/api/promos', promoRoutes);
 
+// registration and login for guest house owner and customer
+app.use('/api/userAuth', userRoutes);
+
+// routes for work with guestHouse
+app.use('/api/guestHouse', guestHouseRoutes);
+
+// customer 
+app.use('/api/customer', customerRoutes)
 
 // start server
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

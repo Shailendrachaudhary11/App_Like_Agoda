@@ -2,15 +2,22 @@ const mongoose = require('mongoose');
 
 const roomSchema = new mongoose.Schema({
     guesthouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Guesthouse', required: true },
-    title: String,
-    description: String,
-    images: [String],
-    amenities: [String],
+    roomNumber: { type: String, required: true ,unique: true},
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    photos: [{ type: String }],
+    amenities: [{ type: String }],
+    priceWeekly: { type: Number },
     pricePerNight: { type: Number, required: true },
-    priceWeekly: Number,
-    priceMonthly: Number,
-    capacity: Number,
-    availability: [{ date: Date, available: Boolean }], // or use a calendar service
+    priceMonthly: { type: Number },
+    capacity: { type: Number },
+    availability: [
+        {
+            startDate: { type: Date, required: true },
+            endDate: { type: Date, required: true },
+            isAvailable: { type: Boolean, default: true }
+        }
+    ],
     createdAt: { type: Date, default: Date.now }
 });
 

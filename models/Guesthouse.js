@@ -1,15 +1,18 @@
 const mongoose = require('mongoose');
 
 const guesthouseSchema = new mongoose.Schema({
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     name: String,
     address: String,
     city: String,
     state: String,
-    // location: { type: { type: String, default: 'Point' }, coordinates: [Number] }, // [lng, lat]
+    location: {
+        type: { type: String, default: 'Point' },
+        coordinates: [Number] // [lng, lat]
+    }, 
     contactNumber: String,
     description: String,
-    // images: [String],
+    images: { type: [String] },
     status: { type: String, enum: ['pending', 'approved', 'suspended'], default: 'pending' },
     createdAt: { type: Date, default: Date.now }
 });
