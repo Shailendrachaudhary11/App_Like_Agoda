@@ -101,7 +101,7 @@ exports.getProfile = async (req, res) => {
         const id = req.user.id;
         console.log("Fetching profile for admin ID:", id);
 
-        const user = await AdminUser.findById(id);
+        const user = await AdminUser.findById(id).select("-password");
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -428,11 +428,12 @@ exports.approvalRequestUser = async (req, res) => {
         const { email } = req.body;
         console.log("Approving user email:", email);
 
-        const user = await User.findOne({ email });
+       const user = await User.findOne({ email: email.toLowerCase() });
+
         if (!user) {
             return res.status(404).json({
                 success: false,
-                message: "User not found."
+                message: "User not found.."
             });
         }
 

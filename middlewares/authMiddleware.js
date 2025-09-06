@@ -19,7 +19,7 @@ const auth = (roles = []) => {
                 req.user = await adminUser.findById(decoded.id).select("-password");
             }
 
-            if (!req.user) return res.status(404).json({ message: "User not found" });
+            if (!req.user) return res.status(404).json({ message: "User not found for approval." });
 
             // Role-based check
             if (roles.length && !roles.includes(req.user.role)) {
