@@ -13,6 +13,11 @@ router.post("/register", uploadAdmin.single('profileImage'),registerValidation,v
 // login router
 router.post('/login', adminController.login);
 
+// forgot password
+router.put('/change-Password',auth(["admin"]), adminController.changePassword);
+router.post('/forgot-password',auth(['admin']),adminController.forgotPassword);
+router.post("/reset-password",auth(['admin']), adminController.resetPassword);
+
 router.get('/getProfile',auth(["admin"]),adminController.getProfile);
 router.put('/updateProfile',auth(["admin"]),uploadAdmin.single('profileImage'),adminController.updateProfile)
 
@@ -41,6 +46,12 @@ router.get("/getGuestHouse/:id",auth(["admin"]),adminController.getGuestHousesBy
 
 router.get("/getUsers", auth(["admin"]), adminController.getAllUsers);
 router.get("/getUser/:id", auth(["admin"]), adminController.getUserById);
+
+
+router.get("/all-promos",auth(["admin"]),adminController.getAllPromo);
+router.get("/promo/:id",auth(["admin"]),adminController.getPromoById);
+router.put("/updatePromo/:id",auth(["admin"]),adminController.updatePromo);
+router.delete("/delete/:id",auth(["admin"]),adminController.deletePromo);
 
 
 module.exports = router;

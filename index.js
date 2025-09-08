@@ -6,7 +6,6 @@ const adminRoutes = require('./routes/adminRoutes');
 const guestHouseRoutes = require('./routes/guesthouseRoutes');
 const ensureUploadDirs = require("./utils/createUploadDirs");
 const customerRoutes = require("./routes/customerRoutes")
-const promoRoutes = require("./routes/promoRoutes")
 
 
 dotenv.config();
@@ -29,9 +28,6 @@ ensureUploadDirs([
 
 // route for admin Registration
 app.use('/api/adminAuth', adminRoutes);
-
-// route for promos
-app.use('/api/promos', promoRoutes);
 
 // registration and login for guest house owner and customer
 app.use('/api/userAuth', userRoutes);

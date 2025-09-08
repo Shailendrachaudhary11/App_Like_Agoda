@@ -6,7 +6,9 @@ const AdminSchema = new mongoose.Schema({
     phone: String,
     password: { type: String, required: true }, // hashed
     role: { type: String, default: 'admin' },
-    profileImage: {type:String},
+    profileImage: { type: String },
+    otp: { type: String },                // OTP field
+    otpExpiry: { type: Date },            // Expiry time
     createdAt: { type: Date, default: Date.now }
 });
 

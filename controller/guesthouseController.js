@@ -3,7 +3,8 @@ const Room = require("../models/Room");
 const User = require("../models/user");
 const fs = require("fs");
 const path = require("path");
-
+const mongoose = require('mongoose');
+const Promo = require("../models/Promo")
 
 //  Add a new guesthouse (Owner only)
 exports.addGuesthouse = async (req, res) => {
@@ -192,11 +193,12 @@ exports.deleteGuesthouse = async (req, res) => {
             return res.status(403).json({ success: false, message: "Unauthorized" });
         }
 
+        await Room.deleteMany({ guesthouse: new mongoose.Types.ObjectId(id) });
         await guesthouse.deleteOne();
 
         return res.status(200).json({
             success: true,
-            message: "Guesthouse deleted successfully",
+            message: "Guesthouse deleted successfully and all rooms of this guesthouse deleted.",
             guesthouse,
         });
     } catch (err) {
@@ -205,6 +207,7 @@ exports.deleteGuesthouse = async (req, res) => {
     }
 };
 
+////////////////////////////====================ROOMS ===========================////////////////////////
 
 //  Add room to a guesthouse (Owner only)
 exports.addRoom = async (req, res) => {
@@ -219,7 +222,7 @@ exports.addRoom = async (req, res) => {
 
         const existingRoom = await Room.findOne({ guesthouse: guesthouseId, roomNumber });
         if (existingRoom) {
-            return res.status(400).json({ success: false, message: `Room number ${roomNumber} already exists` });
+            return res.status(400).json({ success: false, message: `Room number ${roomNumber} already exists in this guestHouse.` });
         }
 
         const newRoom = new Room({
@@ -336,5 +339,113 @@ exports.updateRoom = async (req, res) => {
     } catch (err) {
         console.error("[ROOM] Update error:", err);
         return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+
+////////////////////////////==================== ADD PROMOS CODES By guest house owner ===========================////////////////////////
+
+// Post add promo codes
+exports.addPromo = async (req, res) => {
+    try {
+        const { guesthouseId, code, discountType, discountValue, startDate, endDate, maxUsage } = req.body;
+        const ownerId = req.user.id; // from auth middleware
+
+        // Validate guesthouse ownership
+        const guesthouse = await Guesthouse.findById(guesthouseId);
+        if (!guesthouse) return res.status(404).json({ success: false, message: "Guesthouse not found" });
+        if (guesthouse.owner.toString() !== ownerId) {
+            return res.status(403).json({ success: false, message: "You are not the owner of this guesthouse" });
+        }
+
+        // Check if promo code already exists
+        const existing = await Promo.findOne({ code: code.toUpperCase() , guesthouse:guesthouseId });
+        if (existing) return res.status(409).json({ success: false, message: "Promo code already exists" });
+
+        // Create promo
+        const promo = new Promo({
+            guesthouse: guesthouseId,
+            owner: ownerId,
+            code: code.toUpperCase(),
+            discountType,
+            discountValue,
+            startDate,
+            endDate,
+            maxUsage: maxUsage || null,
+            isActive: true
+        });
+
+        await promo.save();
+        res.status(201).json({ success: true, message: "Promo code added successfully", promo });
+
+    } catch (err) {
+        console.error("Add Promo Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+// Get all promos for owner's guesthouses
+exports.getOwnerPromos = async (req, res) => {
+    try {
+        const ownerId = req.user.id;
+        const promos = await Promo.find({ owner: ownerId }).populate("guesthouse", "name location");
+    res.status(200).json({ success: true, count: promos.length, promos });
+    } catch (err) {
+        console.error("Get Promos Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+// Update Promo
+exports.updatePromo = async (req, res) => {
+    try {
+        const { promoId } = req.params;
+        const ownerId = req.user.id;
+        const updates = req.body;
+
+        const promo = await Promo.findById(promoId);
+        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
+
+        if (promo.owner.toString() !== ownerId) {
+            return res.status(403).json({ success: false, message: "You are not authorized to update this promo" });
+        }
+
+        // Only allow updating these fields
+        const allowedUpdates = ["code", "discountType", "discountValue", "startDate", "endDate", "maxUsage", "isActive"];
+        allowedUpdates.forEach(field => {
+            if (updates[field] !== undefined) promo[field] = updates[field];
+        });
+
+        // Uppercase code
+        if (updates.code) promo.code = updates.code.toUpperCase();
+
+        await promo.save();
+        res.status(200).json({ success: true, message: "Promo updated", promo });
+
+    } catch (err) {
+        console.error("Update Promo Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+// Delete Promo
+exports.deletePromo = async (req, res) => {
+    try {
+        const { promoId } = req.params;
+        const ownerId = req.user.id;
+
+        const promo = await Promo.findById(promoId);
+        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
+
+        if (promo.owner.toString() !== ownerId) {
+            return res.status(403).json({ success: false, message: "You are not authorized to delete this promo" });
+        }
+
+        await promo.deleteOne();
+        res.status(200).json({ success: true, message: "Promo deleted successfully" });
+
+    } catch (err) {
+        console.error("Delete Promo Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };

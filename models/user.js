@@ -5,13 +5,15 @@ const UserSchema = new mongoose.Schema({
     email: { type: String, unique: true, required: true },
     phone: String,
     password: { type: String, required: true }, // hashed
-    role: { 
-        type: String, 
-        enum: [ 'guesthouse_admin', 'customer'], 
-        default: 'customer' 
+    role: {
+        type: String,
+        enum: ['guesthouse_admin', 'customer'],
+        default: 'customer'
     },
-    profileImage: {type:String},
+    profileImage: { type: String },
     status: { type: String, enum: ['pending', 'approved', 'suspended'], default: 'pending' },
+    otp: { type: String },                // OTP field
+    otpExpiry: { type: Date },
     createdAt: { type: Date, default: Date.now }
 });
 

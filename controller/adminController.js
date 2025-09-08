@@ -1,9 +1,15 @@
+const dotenv = require("dotenv");
+dotenv.config();  // ✅ add this
 const AdminUser = require("../models/adminUser");
 const User = require("../models/user");
 const Guesthouse = require("../models/Guesthouse");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Room = require("../models/Room")
+const { sendEmail } = require("../utils/sendEmail");
+const crypto = require("crypto");
+const Promo = require("../models/Promo");
+
 
 // ---------------- Admin Registration ----------------
 exports.register = async (req, res) => {
@@ -94,6 +100,94 @@ exports.login = async (req, res) => {
         });
     }
 };
+
+// ------------------ forgot password -----------
+exports.changePassword = async (req, res) => {
+    try {
+        const { email, oldPassword, newPassword } = req.body;
+        if (!email || !oldPassword || !newPassword) {
+            return res.status(400).json({
+                success: "false",
+                message: "Please provide Email, OldPassword, NewPassword"
+            })
+        }
+        const user = await AdminUser.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: "Old password is incorrect" });
+        }
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+
+        await user.save();
+        res.status(200).json({ success: true, message: "Congratualation Your Password updated successfully......" });
+    }
+    catch (err) {
+        console.error("Error changing password:", err.message);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+}
+
+// ---------------- forgot password using email ----------
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const admin = await AdminUser.findOne({ email });
+
+        if (!admin) {
+            return res.status(404).json({ success: false, message: "Admin not found" });
+        }
+
+        // Generate OTP (6 digit random)
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+        admin.otp = otp;
+        admin.otpExpiry = otpExpiry;
+        await admin.save();
+
+        // Send OTP on email
+        await sendEmail(admin.email, "Password Reset OTP", `Your OTP is ${otp}. It will expire in 10 minutes.`);
+
+        res.json({ success: true, message: "OTP sent to email" });
+    } catch (err) {
+        console.error("Forgot Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// ------------------ reset Password -----------------------
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        const admin = await AdminUser.findOne({ email });
+
+        if (!admin) {
+            return res.status(404).json({ success: false, message: "Admin not found" });
+        }
+
+        // Validate OTP
+        if (admin.otp !== otp || Date.now() > admin.otpExpiry) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        admin.password = hashedPassword;
+        admin.otp = undefined;
+        admin.otpExpiry = undefined;
+
+        await admin.save();
+
+        res.json({ success: true, message: "Password reset successful" });
+    } catch (err) {
+        console.error("Reset Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 
 // ---------------- Get Profile ----------------
 exports.getProfile = async (req, res) => {
@@ -428,7 +522,7 @@ exports.approvalRequestUser = async (req, res) => {
         const { email } = req.body;
         console.log("Approving user email:", email);
 
-       const user = await User.findOne({ email: email.toLowerCase() });
+        const user = await User.findOne({ email: email.toLowerCase() });
 
         if (!user) {
             return res.status(404).json({
@@ -661,5 +755,79 @@ exports.getUserById = async (req, res) => {
             message: "Failed to fetch user.",
             error: err.message
         });
+    }
+};
+
+// ---------------- Get all promos ---------------
+exports.getAllPromo = async (req,res) =>{
+    try{
+        const promos= await Promo.find();
+        res.status(200).json({
+            success:true,
+            message:"All promos: ",
+            NoOfPromos: promos.length,
+            promos: promos
+        })
+    } catch(error){
+        console.error(error ,"Error fetching all promos"),
+        res.status(500).json({
+             success:false,
+            message:"Error all promos: ",
+        })
+    }
+}
+
+
+// --------------- GET promo by ID ------------
+exports.getPromoById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const promo = await Promo.findById(id).populate("guesthouse", "name location");
+        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
+
+        res.status(200).json({ success: true, promo });
+    } catch (err) {
+        console.error("Get Promo Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+// ---------------- UPDATE promo ------------
+exports.updatePromo = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const updates = req.body;
+        const allowedUpdates = ["code", "discountType", "discountValue", "startDate", "endDate", "maxUsage", "isActive"];
+
+        const promo = await Promo.findById(id);
+        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
+
+        allowedUpdates.forEach(field => {
+            if (updates[field] !== undefined) promo[field] = updates[field];
+        });
+
+        if (updates.code) promo.code = updates.code.toUpperCase();
+
+        await promo.save();
+        res.status(200).json({ success: true, message: "Promo updated", promo });
+    } catch (err) {
+        console.error("Update Promo Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+// ----------------- DELETE promo ------------
+exports.deletePromo = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const promo = await Promo.findByIdAndDelete(id);
+        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
+
+        res.status(200).json({ success: true, message: "Promo deleted" });
+    } catch (err) {
+        console.error("Delete Promo Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };

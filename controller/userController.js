@@ -1,9 +1,13 @@
+const dotenv = require("dotenv");
+dotenv.config();  // ✅ add this
 const User = require("../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { sendEmail } = require("../utils/sendEmail");
+const crypto = require("crypto");
 
 
-// REGISTER USER
+// ---------------------- REGISTER USER ---------------
 exports.register = async (req, res) => {
     try {
         const { name, email, phone, password, role } = req.body;
@@ -51,7 +55,7 @@ exports.register = async (req, res) => {
     }
 };
 
-// LOGIN USER
+// ------------------ LOGIN USER -----------------
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -112,7 +116,7 @@ exports.login = async (req, res) => {
     }
 };
 
-// get own profile
+// ----------------- get own profile ---------------
 exports.getMyProfile = async (req, res) => {
     try {
         // req.user is already set by verifyToken middleware
@@ -130,7 +134,7 @@ exports.getMyProfile = async (req, res) => {
     }
 };
 
-// update profile
+// ---------------- update profile -----------------
 exports.updateProfile = async (req, res) => {
     try {
         if (req.body.name) req.user.name = req.body.name;
@@ -158,6 +162,8 @@ exports.updateProfile = async (req, res) => {
     }
 }
 
+
+// -------------- change password ---------------
 exports.changePassword = async (req, res) => {
     try {
         const { email, oldPassword, newPassword } = req.body;
@@ -186,4 +192,61 @@ exports.changePassword = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 }
+
+// ------------ OTP send for change Password
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "user not found" });
+        }
+
+        // Generate OTP (6 digit random)
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+        user.otp = otp;
+        user.otpExpiry = otpExpiry;
+        await user.save();
+
+        // Send OTP on email
+        await sendEmail(user.email, "Password Reset OTP", `Your OTP is ${otp}. It will expire in 10 minutes.`);
+
+        res.json({ success: true, message: "OTP sent to email" });
+    } catch (err) {
+        console.error("Forgot Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// ------------------ reset Password -----------------------
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Validate OTP
+        if (user.otp !== otp || Date.now() > user.otpExpiry) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        user.otp = undefined;
+        user.otpExpiry = undefined;
+
+        await user.save();
+
+        res.json({ success: true, message: "Password reset successful" });
+    } catch (err) {
+        console.error("Reset Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
 
