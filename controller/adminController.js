@@ -6,7 +6,7 @@ const Guesthouse = require("../models/Guesthouse");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Room = require("../models/Room")
-const { sendEmail } = require("../utils/sendEmail");
+const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 const Promo = require("../models/Promo");
 
@@ -64,7 +64,7 @@ exports.login = async (req, res) => {
             console.log("Admin not found:", email);
             return res.status(401).json({
                 success: false,
-                message: "Invalid email or password."
+                message: "Invalid email."
             });
         }
 
@@ -73,23 +73,22 @@ exports.login = async (req, res) => {
             console.log("Invalid password attempt for:", email);
             return res.status(401).json({
                 success: false,
-                message: "Invalid email or password."
+                message: "Invalid password."
             });
         }
 
         const token = jwt.sign(
-            { id: adminUser._id, role: "admin" },
+            { id: adminUser._id, role: "admin", name: adminUser.name },
             process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+            { expiresIn: "30d" }
         );
 
         console.log("Admin logged in successfully:", adminUser._id);
 
         return res.status(200).json({
             success: true,
-            message: "Login successful.",
-            token,
-            data: adminUser
+            message: "Login successfully.",
+            token
         });
     } catch (error) {
         console.error("Error in admin login:", error.message);
@@ -104,32 +103,45 @@ exports.login = async (req, res) => {
 // ------------------ forgot password -----------
 exports.changePassword = async (req, res) => {
     try {
-        const { email, oldPassword, newPassword } = req.body;
-        if (!email || !oldPassword || !newPassword) {
+        const { oldPassword, newPassword, confirmPassword } = req.body;
+
+        // ✅ Check all fields
+        if (!oldPassword || !newPassword || !confirmPassword) {
             return res.status(400).json({
-                success: "false",
-                message: "Please provide Email, OldPassword, NewPassword"
-            })
+                success: false,
+                message: "Please provide oldPassword, newPassword, and confirmPassword"
+            });
         }
-        const user = await AdminUser.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
+
+        // ✅ Check if newPassword and confirmPassword match
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "New password and confirm password do not match"
+            });
         }
+
+        const user = req.user; // Assuming req.user is set by auth middleware
+
+        // ✅ Check old password
         const isMatch = await bcrypt.compare(oldPassword, user.password);
         if (!isMatch) {
             return res.status(400).json({ success: false, message: "Old password is incorrect" });
         }
+
+        // ✅ Hash new password and save
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         user.password = hashedPassword;
-
         await user.save();
-        res.status(200).json({ success: true, message: "Congratualation Your Password updated successfully......" });
-    }
-    catch (err) {
+
+        res.status(200).json({ success: true, message: "Password updated successfully" });
+
+    } catch (err) {
         console.error("Error changing password:", err.message);
         res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
-}
+};
+
 
 // ---------------- forgot password using email ----------
 exports.forgotPassword = async (req, res) => {
@@ -141,29 +153,40 @@ exports.forgotPassword = async (req, res) => {
             return res.status(404).json({ success: false, message: "Admin not found" });
         }
 
-        // Generate OTP (6 digit random)
+        // Generate OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+        const otpExpiry = Date.now() + 10 * 60 * 1000;
 
         admin.otp = otp;
         admin.otpExpiry = otpExpiry;
         await admin.save();
 
-        // Send OTP on email
-        await sendEmail(admin.email, "Password Reset OTP", `Your OTP is ${otp}. It will expire in 10 minutes.`);
+        // Send OTP
+        const emailSent = await sendEmail(
+            admin.email,
+            "Password Reset OTP",
+            `Your OTP is ${otp}. It will expire in 10 minutes.`
+        );
 
-        res.json({ success: true, message: "OTP sent to email" });
+        if (!emailSent) {
+            return res.status(500).json({ success: false, message: "Failed to send OTP email" });
+        }
+
+        res.status(200).json({ success: true, message: "OTP sent to email" });
+
     } catch (err) {
         console.error("Forgot Password Error:", err);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };
 
-// ------------------ reset Password -----------------------
-exports.resetPassword = async (req, res) => {
+// ------------------- OTP verify // Verify OTP
+exports.verifyOtp = async (req, res) => {
     try {
-        const { email, otp, newPassword } = req.body;
-        const admin = await AdminUser.findOne({ email });
+        const { otp } = req.body;
+
+        const id = req.user.id;
+        const admin = await AdminUser.findById(id);
 
         if (!admin) {
             return res.status(404).json({ success: false, message: "Admin not found" });
@@ -173,20 +196,60 @@ exports.resetPassword = async (req, res) => {
         if (admin.otp !== otp || Date.now() > admin.otpExpiry) {
             return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
         }
+        admin.otp=undefined;
+        admin.otpExpiry=undefined;
 
+        await admin.save();
+        res.status(200).json({ success: true, message: "OTP verified successfully" });
+
+    } catch (err) {
+        console.error("OTP Verification Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+
+// ------------------ reset Password -----------------------
+exports.setNewPassword = async (req, res) => {
+    try {
+        const { newPassword, confirmPassword } = req.body;
+
+        if (!newPassword || !confirmPassword) {
+            return res.status(400).json({ success: false, message: "Password fields are required" });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ success: false, message: "Passwords do not match" });
+        }
+
+        const { otp } = req.body;
+
+        const id = req.user.id;
+        const admin = await AdminUser.findById(id);
+
+        if (!admin) {
+            return res.status(404).json({ success: false, message: "Admin not found" });
+        }
+
+
+        // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         admin.password = hashedPassword;
+
+        // Clear OTP
         admin.otp = undefined;
         admin.otpExpiry = undefined;
 
         await admin.save();
 
         res.json({ success: true, message: "Password reset successful" });
+
     } catch (err) {
-        console.error("Reset Password Error:", err);
-        res.status(500).json({ success: false, message: "Server error" });
+        console.error("Set New Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };
+
 
 
 // ---------------- Get Profile ----------------
@@ -195,7 +258,7 @@ exports.getProfile = async (req, res) => {
         const id = req.user.id;
         console.log("Fetching profile for admin ID:", id);
 
-        const user = await AdminUser.findById(id).select("-password");
+        const user = await AdminUser.findById(id).select("-password").select("-otp").select("-otpExpiry")
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -223,7 +286,6 @@ exports.updateProfile = async (req, res) => {
         console.log("Updating profile for admin ID:", req.user._id);
 
         if (req.body.name) req.user.name = req.body.name;
-        if (req.body.email) req.user.email = req.body.email;
         if (req.body.phone) req.user.phone = req.body.phone;
         if (req.file) req.user.profileImage = req.file.path;
 
@@ -379,25 +441,6 @@ exports.activateGuesthouse = async (req, res) => {
     }
 }
 
-// ---------------- getAllRooms ----------------
-exports.getAllRooms = async (req, res) => {
-    try {
-        const rooms = await Room.find(); // ensure field matches schema
-        res.status(200).json({
-            success: true,
-            message: "Successfully fetched all rooms",
-            NoOfRooms: rooms.length,
-            Rooms: rooms
-        });
-    } catch (err) {
-        console.log("Error while fetching rooms:", err);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching all rooms"
-        });
-    }
-};
-
 // ---------------- GET rooms by id ----------------
 exports.getRoomById = async (req, res) => {
     try {
@@ -515,6 +558,39 @@ exports.deleteRoom = async (req, res) => {
     }
 };
 
+// --------------- get room by guest house Id
+exports.getRoomGuestHouseBy = async (req, res) => {
+    try {
+        const { guesthouseId } = req.params;
+
+        // ✅ Check if guesthouse exists
+        const guesthouse = await Guesthouse.findById(guesthouseId);
+        if (!guesthouse) {
+            return res.status(404).json({
+                success: false,
+                message: "Guesthouse not found."
+            });
+        }
+
+        // ✅ Fetch rooms with ObjectId
+        const rooms = await Room.find({ guesthouse: guesthouseId });
+
+        return res.status(200).json({
+            success: true,
+            message: "Rooms fetched successfully.",
+            totalRooms: rooms.length,
+            rooms
+        });
+
+    } catch (error) {
+        console.error("Error in getRoomGuestHouseBy:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching rooms."
+        });
+    }
+};
+
 
 // ---------------- Approve User ----------------
 exports.approvalRequestUser = async (req, res) => {
@@ -539,7 +615,8 @@ exports.approvalRequestUser = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "User approved successfully.",
-            data: user
+            userId: user._id,
+            role: user.role
         });
     } catch (err) {
         console.error("Error approving user:", err.message);
@@ -572,7 +649,8 @@ exports.rejectRequestUser = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "User rejected successfully.",
-            data: user
+            userId: user._id,
+            role: user.role
         });
     } catch (err) {
         console.error("Error rejecting user:", err.message);
@@ -607,7 +685,8 @@ exports.suspendedRequestUser = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "User suspended successfully.",
-            data: user
+            userId: user._id,
+            role: user.role
         });
     } catch (err) {
         console.error("Error suspended user:", err.message);
@@ -641,7 +720,8 @@ exports.activateRequestUser = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "User activating successfully.",
-            data: user
+            userId: user._id,
+            role: user.role
         });
     } catch (err) {
         console.error("Error activating user:", err.message);
@@ -664,7 +744,7 @@ exports.getAllGuestHouses = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            count: guesthouses.length,
+            NoOfGuestHouses: guesthouses.length,
             data: guesthouses
         });
     } catch (err) {
@@ -708,72 +788,125 @@ exports.getGuestHousesById = async (req, res) => {
     }
 };
 
-// ---------------- Get All Users ----------------
+// ---------------- Get All customer ----------------
 exports.getAllUsers = async (req, res) => {
     try {
-        console.log("Fetching all users");
+        console.log("Fetching all customers");
 
-        const users = await User.find().select("-password");
+        const customers = await User.find({ role: "customer" }).select("-password");
         return res.status(200).json({
             success: true,
-            count: users.length,
-            data: users
+            count: customers.length,
+            data: customers
         });
     } catch (err) {
-        console.error("Error fetching users:", err.message);
+        console.error("Error fetching customers:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to fetch users.",
+            message: "Failed to fetch customers.",
             error: err.message
         });
     }
 };
 
-// ---------------- Get User By ID ----------------
+// ---------------- Get customer By ID ----------------
 exports.getUserById = async (req, res) => {
     try {
         const { id } = req.params;
-        console.log("Fetching user by ID:", id);
+        console.log("Fetching customer by ID:", id);
 
-        const user = await User.findById(id).select("-password");
+        const customer = await User.findOne({ _id: id, role: "customer" }).select("-password");
 
-        if (!user) {
+        if (!customer) {
             return res.status(404).json({
                 success: false,
-                message: "User not found."
+                message: "customer not found."
             });
         }
 
         return res.status(200).json({
             success: true,
-            data: user
+            data: customer
         });
     } catch (err) {
-        console.error("Error fetching user by ID:", err.message);
+        console.error("Error fetching customer by ID:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to fetch user.",
+            message: "Failed to fetch customer.",
             error: err.message
         });
     }
 };
 
+
+// ---------------- Get All Guesthouse Owners ----------------
+exports.getAllGuesthouseOwners = async (req, res) => {
+    try {
+        console.log("Fetching all guesthouse owners");
+
+        const owners = await User.find({ role: "guesthouse_admin" }).select("-password");
+        return res.status(200).json({
+            success: true,
+            count: owners.length,
+            data: owners
+        });
+    } catch (err) {
+        console.error("Error fetching guesthouse owners:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch guesthouse owners.",
+            error: err.message
+        });
+    }
+};
+
+// ---------------- Get Guesthouse Owner By ID ----------------
+exports.getGuesthouseOwnerById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log("Fetching guesthouse owner by ID:", id);
+
+        const owner = await User.findOne({ _id: id, role: "guesthouse_admin" }).select("-password");
+
+        if (!owner) {
+            return res.status(404).json({
+                success: false,
+                message: "Guesthouse owner not found."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: owner
+        });
+    } catch (err) {
+        console.error("Error fetching guesthouse owner by ID:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch guesthouse owner.",
+            error: err.message
+        });
+    }
+};
+
+
 // ---------------- Get all promos ---------------
-exports.getAllPromo = async (req,res) =>{
-    try{
-        const promos= await Promo.find();
+exports.getAllPromo = async (req, res) => {
+    try {
+        const promos = await Promo.find({ isActive: true });
+
         res.status(200).json({
-            success:true,
-            message:"All promos: ",
+            success: true,
+            message: "All promos: ",
             NoOfPromos: promos.length,
             promos: promos
         })
-    } catch(error){
-        console.error(error ,"Error fetching all promos"),
-        res.status(500).json({
-             success:false,
-            message:"Error all promos: ",
-        })
+    } catch (error) {
+        console.error(error, "Error fetching all promos"),
+            res.status(500).json({
+                success: false,
+                message: "Error all promos: ",
+            })
     }
 }
 
@@ -782,7 +915,9 @@ exports.getAllPromo = async (req,res) =>{
 exports.getPromoById = async (req, res) => {
     try {
         const { id } = req.params;
-        const promo = await Promo.findById(id).populate("guesthouse", "name location");
+        const promo = await Promo.findOne({ _id: id, isActive: true })
+            .populate("guesthouse", "name location");
+
         if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
 
         res.status(200).json({ success: true, promo });
@@ -797,25 +932,48 @@ exports.updatePromo = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const updates = req.body;
-        const allowedUpdates = ["code", "discountType", "discountValue", "startDate", "endDate", "maxUsage", "isActive"];
+        let promo = await Promo.findById(id);
+        if (!promo) {
+            return res.status(404).json({ success: false, message: "Promo not found" });
+        }
 
-        const promo = await Promo.findById(id);
-        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
+        // Destructure body
+        let { code, discountType, discountValue, startDate, endDate, maxUsage, isActive } = req.body;
 
-        allowedUpdates.forEach(field => {
-            if (updates[field] !== undefined) promo[field] = updates[field];
-        });
+        // If code given → uppercase + check duplicate
+        if (code) {
+            code = code.toUpperCase();
 
-        if (updates.code) promo.code = updates.code.toUpperCase();
+            const promoByCode = await Promo.findOne({ code: code, _id: { $ne: id } });
+            if (promoByCode) {
+                return res.status(400).json({ success: false, message: "Use a different promo code." });
+            }
+
+            promo.code = code;
+        }
+
+        // Update other fields if provided
+        if (discountType) promo.discountType = discountType;
+        if (discountValue) promo.discountValue = discountValue;
+        if (startDate) promo.startDate = startDate;
+        if (endDate) promo.endDate = endDate;
+        if (maxUsage !== undefined) promo.maxUsage = maxUsage;
+        if (typeof isActive === "boolean") promo.isActive = isActive;
 
         await promo.save();
-        res.status(200).json({ success: true, message: "Promo updated", promo });
+
+        return res.status(200).json({
+            success: true,
+            message: "Promo updated successfully",
+            promo
+        });
+
     } catch (err) {
         console.error("Update Promo Error:", err);
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
+        return res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };
+
 
 // ----------------- DELETE promo ------------
 exports.deletePromo = async (req, res) => {

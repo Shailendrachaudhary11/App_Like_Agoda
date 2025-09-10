@@ -1,3 +1,4 @@
+require("dotenv").config(); // top of your app
 const express = require('express');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
@@ -8,8 +9,14 @@ const ensureUploadDirs = require("./utils/createUploadDirs");
 const customerRoutes = require("./routes/customerRoutes")
 
 
-dotenv.config();
+
 const app = express();
+
+console.log("SMTP_HOST:", process.env.SMTP_HOST);
+console.log("SMTP_PORT:", process.env.SMTP_PORT);
+console.log("SMTP_SECURE:", process.env.SMTP_SECURE);
+
+
 
 // connect DB
 connectDB();
@@ -41,5 +48,5 @@ app.use('/api/customer', customerRoutes)
 // start server
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

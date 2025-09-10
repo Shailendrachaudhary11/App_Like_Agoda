@@ -6,6 +6,141 @@ const path = require("path");
 const mongoose = require('mongoose');
 const Promo = require("../models/Promo")
 
+
+// ----------------- get own profile ---------------
+exports.getMyProfile = async (req, res) => {
+    try {
+        // req.user is already set by verifyToken middleware
+        res.status(200).json({
+            success: true,
+            data: req.user
+        });
+    } catch (err) {
+        console.error("Error fetching profile:", err.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch profile",
+            error: err.message
+        });
+    }
+};
+
+// ---------------- update profile -----------------
+exports.updateProfile = async (req, res) => {
+    try {
+        if (req.body.name) req.user.name = req.body.name;
+        if (req.body.email) req.user.email = req.body.email;
+        if (req.body.phone) req.user.phone = req.body.phone;
+
+
+        if (req.file) {
+            req.user.profileImage = req.file.path;
+        }
+        await req.user.save();
+        res.status(200).json({
+            success: true,
+            data: req.user
+        })
+
+
+    } catch (err) {
+        console.error("Error updated profile:", err.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to update profile",
+            error: err.message
+        });
+    }
+}
+
+
+// -------------- change password ---------------
+exports.changePassword = async (req, res) => {
+    try {
+        const { email, oldPassword, newPassword } = req.body;
+        if (!email || !oldPassword || !newPassword) {
+            return res.status(400).json({
+                success: "false",
+                message: "Please provide Email, OldPassword, NewPassword"
+            })
+        }
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: "Old password is incorrect" });
+        }
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+
+        await user.save();
+        res.status(200).json({ success: true, message: "Password updated successfully" });
+    }
+    catch (err) {
+        console.error("Error changing password:", err.message);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+}
+
+// ------------ OTP send for change Password
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "user not found" });
+        }
+
+        // Generate OTP (6 digit random)
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+        user.otp = otp;
+        user.otpExpiry = otpExpiry;
+        await user.save();
+
+        // Send OTP on email
+        await sendEmail(user.email, "Password Reset OTP", `Your OTP is ${otp}. It will expire in 10 minutes.`);
+
+        res.json({ success: true, message: "OTP sent to email" });
+    } catch (err) {
+        console.error("Forgot Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// ------------------ reset Password -----------------------
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Validate OTP
+        if (user.otp !== otp || Date.now() > user.otpExpiry) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        user.otp = undefined;
+        user.otpExpiry = undefined;
+
+        await user.save();
+
+        res.json({ success: true, message: "Password reset successful" });
+    } catch (err) {
+        console.error("Reset Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 //  Add a new guesthouse (Owner only)
 exports.addGuesthouse = async (req, res) => {
     try {
@@ -215,9 +350,9 @@ exports.addRoom = async (req, res) => {
         const ownerId = req.user.id;
         const { guesthouseId, roomNumber, title, description, amenities, pricePerNight, priceWeekly, priceMonthly, capacity, availability } = req.body;
 
-        const guesthouse = await Guesthouse.findOne({ _id: guesthouseId, owner: ownerId });
+        const guesthouse = await Guesthouse.findOne({ _id: guesthouseId, owner: ownerId, status: "approved" });
         if (!guesthouse) {
-            return res.status(403).json({ success: false, message: "Guesthouse not found or unauthorized" });
+            return res.status(403).json({ success: false, message: "Guesthouse not found or unauthorized or you are allowed to add rooms." });
         }
 
         const existingRoom = await Room.findOne({ guesthouse: guesthouseId, roomNumber });
@@ -351,15 +486,23 @@ exports.addPromo = async (req, res) => {
         const { guesthouseId, code, discountType, discountValue, startDate, endDate, maxUsage } = req.body;
         const ownerId = req.user.id; // from auth middleware
 
+        if (!guesthouseId || !code || !discountType || !discountValue || !startDate || !endDate) {
+            return res.status(404).json({
+                success: false,
+                message: "Plz provide all fields like as... guesthouseId, code, discountType, discountValue, startDate, endDate, maxUsage (Optional)"
+            })
+        }
         // Validate guesthouse ownership
-        const guesthouse = await Guesthouse.findById(guesthouseId);
-        if (!guesthouse) return res.status(404).json({ success: false, message: "Guesthouse not found" });
+        const guesthouse = await Guesthouse.findOne({
+            _id: guesthouseId, status: "approved"
+        });
+        if (!guesthouse) return res.status(404).json({ success: false, message: "Guesthouse not found or not approve." });
         if (guesthouse.owner.toString() !== ownerId) {
             return res.status(403).json({ success: false, message: "You are not the owner of this guesthouse" });
         }
 
         // Check if promo code already exists
-        const existing = await Promo.findOne({ code: code.toUpperCase() , guesthouse:guesthouseId });
+        const existing = await Promo.findOne({ code: code.toUpperCase(), guesthouse: guesthouseId });
         if (existing) return res.status(409).json({ success: false, message: "Promo code already exists" });
 
         // Create promo
@@ -389,7 +532,7 @@ exports.getOwnerPromos = async (req, res) => {
     try {
         const ownerId = req.user.id;
         const promos = await Promo.find({ owner: ownerId }).populate("guesthouse", "name location");
-    res.status(200).json({ success: true, count: promos.length, promos });
+        res.status(200).json({ success: true, count: promos.length, promos });
     } catch (err) {
         console.error("Get Promos Error:", err);
         res.status(500).json({ success: false, message: "Server error", error: err.message });

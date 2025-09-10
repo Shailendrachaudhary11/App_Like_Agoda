@@ -4,6 +4,14 @@ const guesthouseController = require('../controller/guesthouseController');
 const auth = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadMiddleware')
 const uploadRooms = require('../middlewares/uploadRooms');
+const uploadUser = require("../middlewares/uploadUser");
+
+
+router.get("/viewProfile", auth(["guesthouse_admin"]), guesthouseController.getMyProfile);
+router.put("/updateProfile", auth(["guesthouse_admin"]), uploadUser.single('profileImage'), guesthouseController.updateProfile);
+router.post("/change-password", auth(["guesthouse_admin"]), guesthouseController.changePassword);
+router.post('/forgot-password', auth(["guesthouse_admin"]),guesthouseController.forgotPassword);
+router.post("/reset-password", auth(["guesthouse_admin"]), guesthouseController.resetPassword);
 
 // Only "guesthouse_admin" can add guesthouses
 // GUESTHOUSE

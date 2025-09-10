@@ -1,25 +1,30 @@
 const nodemailer = require("nodemailer");
-
+ 
+ 
 const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.EMAIL_USER,   // ✅ from .env
-        pass: process.env.EMAIL_PASS    // ✅ from .env
-    }
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: process.env.SMTP_SECURE,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
-
-exports.sendEmail = async (to, subject, text) => {
-    try {
-        await transporter.sendMail({
-            from: `"Agoda App" <${process.env.EMAIL_USER}>`,
-            to,
-            subject,
-            text
-        });
-        console.log("📧 Email sent successfully");
-    } catch (error) {
-        console.error("❌ Email error:", error);
-        throw new Error(error.message,"Email not sent");
-    }
+ 
+const sendMail = async (to, subject, text) => {
+  try {
+    const info = await transporter.sendMail({
+      from: `"AGODA APP" <${process.env.SMTP_USER}>`,
+      to,
+      subject,
+      text,
+    });
+    console.log("Email sent:", info.messageId);
+    return info;
+  } catch (error) {
+    console.error("Error sending email:", error);
+    throw error;
+  }
 };
-
+ 
+module.exports = sendMail;

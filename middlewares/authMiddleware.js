@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
-const adminUser = require('../models/adminUser')
+const AdminUser = require('../models/adminUser');
 
 const auth = (roles = []) => {
     return async (req, res, next) => {
@@ -9,24 +9,27 @@ const auth = (roles = []) => {
             if (!token) return res.status(401).json({ message: "No token provided" });
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            req.user = await User.findById(decoded.id).select("-password");
+            let user = await User.findById(decoded.id);
+            let roleSource = "User";
 
-            console.log("Decoded token:", decoded);
-            console.log("User from DB:", req.user);
-            console.log("Roles allowed:", roles);
-
-            if (!req.user) {
-                req.user = await adminUser.findById(decoded.id).select("-password");
+            if (!user) {
+                user = await AdminUser.findById(decoded.id);
+                roleSource = "AdminUser";
             }
 
-            if (!req.user) return res.status(404).json({ message: "User not found for approval." });
+            if (!user) return res.status(404).json({ message: "User not found" });
 
-            // Role-based check
-            if (roles.length && !roles.includes(req.user.role)) {
+            req.user = user;
+
+            // Role check
+            if (roles.length && !roles.includes(user.role)) {
                 return res.status(403).json({ message: "Permission denied" });
             }
+
+            console.log(`User from DB (${roleSource}):`, user);
             next();
         } catch (err) {
+            console.error("Auth middleware error:", err.message);
             return res.status(401).json({ message: "Invalid or expired token" });
         }
     }
