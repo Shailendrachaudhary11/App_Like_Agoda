@@ -34,7 +34,7 @@ exports.register = async (req, res) => {
             role,
         });
 
-        if(req.file) profileImage= req.file;
+        if (req.file) profileImage = req.file;
         await newUser.save();
 
         return res.status(201).json({
@@ -59,6 +59,12 @@ exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        if (!email || !password) {
+            return res.status(404).json({
+                success: false,
+                message: "email or password are missing."
+            })
+        }
         const user = await User.findOne({ email });
         if (!user) {
             console.warn(`[AUTH] Login failed: email is incorrect ${email}`);
@@ -173,6 +179,32 @@ exports.changePassword = async (req, res) => {
             });
         }
 
+        // 🔹 Always fetch user from DB to ensure password is available
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        //  Check old password
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ // unauthorized
+                success: false,
+                message: "Old password is incorrect"
+            });
+        }
+
+        //  Validate new password length
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must be at least 6 characters long"
+            });
+        }
+
         //  Check if newPassword and confirmPassword match
         if (newPassword !== confirmPassword) {
             return res.status(400).json({
@@ -181,24 +213,30 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        const user = req.user; // Assuming req.user is set by auth middleware
-
-        //  Check old password
-        const isMatch = await bcrypt.compare(oldPassword, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ success: false, message: "Old password is incorrect" });
+        //  Prevent reusing old password
+        if (oldPassword === newPassword) {
+            return res.status(409).json({ // conflict
+                success: false,
+                message: "Old password and new password must be different"
+            });
         }
 
         //  Hash new password and save
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
+        user.password = await bcrypt.hash(newPassword, 10);
         await user.save();
 
-        res.status(200).json({ success: true, message: "Password updated successfully" });
+        return res.status(200).json({
+            success: true,
+            message: "Password updated successfully"
+        });
 
     } catch (err) {
         console.error("Error changing password:", err.message);
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: err.message
+        });
     }
 };
 
@@ -287,6 +325,12 @@ exports.resetPassword = async (req, res) => {
 
         if (newPassword !== confirmPassword) {
             return res.status(400).json({ success: false, message: "Passwords do not match" });
+        }
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must be at least 6 characters long"
+            });
         }
 
         // Hash new password

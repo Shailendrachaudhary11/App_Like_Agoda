@@ -1,7 +1,6 @@
 const dotenv = require("dotenv");
 dotenv.config(); 
 const AdminUser = require("../models/adminUser");
-const User = require("../models/user");
 const Guesthouse = require("../models/Guesthouse");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -113,6 +112,32 @@ exports.changePassword = async (req, res) => {
             });
         }
 
+        // 🔹 Always fetch admin from DB to ensure password is available
+        const admin = await AdminUser.findById(req.user.id);
+        if (!admin) {
+            return res.status(404).json({
+                success: false,
+                message: "AdminUser not found"
+            });
+        }
+
+        //  Check old password
+        const isMatch = await bcrypt.compare(oldPassword, admin.password);
+        if (!isMatch) {
+            return res.status(401).json({ // unauthorized
+                success: false,
+                message: "Old password is incorrect"
+            });
+        }
+
+        //  Validate new password length
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must be at least 6 characters long"
+            });
+        }
+
         //  Check if newPassword and confirmPassword match
         if (newPassword !== confirmPassword) {
             return res.status(400).json({
@@ -121,26 +146,33 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        const user = req.user; // Assuming req.user is set by auth middleware
-
-        //  Check old password
-        const isMatch = await bcrypt.compare(oldPassword, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ success: false, message: "Old password is incorrect" });
+        //  Prevent reusing old password
+        if (oldPassword === newPassword) {
+            return res.status(409).json({ // conflict
+                success: false,
+                message: "Old password and new password must be different"
+            });
         }
 
         //  Hash new password and save
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
-        await user.save();
+        admin.password = await bcrypt.hash(newPassword, 10);
+        await admin.save();
 
-        res.status(200).json({ success: true, message: "Password updated successfully" });
+        return res.status(200).json({
+            success: true,
+            message: "Password updated successfully"
+        });
 
     } catch (err) {
         console.error("Error changing password:", err.message);
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: err.message
+        });
     }
 };
+
 
 
 // ---------------- forgot password using email ----------
@@ -185,7 +217,7 @@ exports.verifyOtp = async (req, res) => {
     try {
         const { otp } = req.body;
 
-        const id = req.user.id;
+        const id = req.admin.id;
         const admin = await AdminUser.findById(id);
 
         if (!admin) {
@@ -214,7 +246,7 @@ exports.setNewPassword = async (req, res) => {
     try {
         const { newPassword, confirmPassword } = req.body;
 
-        const id = req.user.id;
+        const id = req.admin.id;
         const admin = await AdminUser.findById(id);
 
         if (!admin) {
@@ -229,6 +261,7 @@ exports.setNewPassword = async (req, res) => {
             return res.status(400).json({ success: false, message: "Passwords do not match" });
         }
 
+        
         // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         admin.password = hashedPassword;
@@ -251,11 +284,11 @@ exports.setNewPassword = async (req, res) => {
 // ---------------- Get Profile ----------------
 exports.getProfile = async (req, res) => {
     try {
-        const id = req.user.id;
+        const id = req.admin.id;
         console.log("Fetching profile for admin ID:", id);
 
-        const user = await AdminUser.findById(id).select("-password").select("-otp").select("-otpExpiry")
-        if (!user) {
+        const admin = await AdminUser.findById(id).select("-password").select("-otp").select("-otpExpiry")
+        if (!admin) {
             return res.status(404).json({
                 success: false,
                 message: "Admin not found."
@@ -264,7 +297,7 @@ exports.getProfile = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: user
+            data: admin
         });
     } catch (err) {
         console.error("Error fetching admin profile:", err.message);
@@ -279,20 +312,20 @@ exports.getProfile = async (req, res) => {
 // ---------------- Update Profile ----------------
 exports.updateProfile = async (req, res) => {
     try {
-        console.log("Updating profile for admin ID:", req.user._id);
+        console.log("Updating profile for admin ID:", req.admin._id);
 
-        if (req.body.name) req.user.name = req.body.name;
-        if (req.body.phone) req.user.phone = req.body.phone;
-        if (req.file) req.user.profileImage = req.file.path;
+        if (req.body.name) req.admin.name = req.body.name;
+        if (req.body.phone) req.admin.phone = req.body.phone;
+        if (req.file) req.admin.profileImage = req.file.path;
 
-        await req.user.save();
+        await req.admin.save();
 
-        console.log("Profile updated successfully:", req.user._id);
+        console.log("Profile updated successfully:", req.admin._id);
 
         return res.status(200).json({
             success: true,
             message: "Profile updated successfully.",
-            data: req.user
+            data: req.admin
         });
     } catch (err) {
         console.error("Error updating profile:", err.message);
@@ -559,7 +592,7 @@ exports.getRoomGuestHouseBy = async (req, res) => {
     try {
         const { guesthouseId } = req.params;
 
-        // ✅ Check if guesthouse exists
+        // Check if guesthouse exists
         const guesthouse = await Guesthouse.findById(guesthouseId);
         if (!guesthouse) {
             return res.status(404).json({
@@ -568,7 +601,7 @@ exports.getRoomGuestHouseBy = async (req, res) => {
             });
         }
 
-        // ✅ Fetch rooms with ObjectId
+        // Fetch rooms with ObjectId
         const rooms = await Room.find({ guesthouse: guesthouseId });
 
         return res.status(200).json({
@@ -588,142 +621,142 @@ exports.getRoomGuestHouseBy = async (req, res) => {
 };
 
 
-// ---------------- Approve User ----------------
+// ---------------- Approve AdminUser ----------------
 exports.approvalRequestUser = async (req, res) => {
     try {
         const { email } = req.body;
-        console.log("Approving user email:", email);
+        console.log("Approving admin email:", email);
 
-        const user = await User.findOne({ email: email.toLowerCase() });
+        const admin = await AdminUser.findOne({ email: email.toLowerCase() });
 
-        if (!user) {
+        if (!admin) {
             return res.status(404).json({
                 success: false,
-                message: "User not found.."
+                message: "AdminUser not found.."
             });
         }
 
-        user.status = "approved";
-        await user.save();
+        admin.status = "approved";
+        await admin.save();
 
-        console.log("User approved:", email);
+        console.log("AdminUser approved:", email);
 
         return res.status(200).json({
             success: true,
-            message: "User approved successfully.",
-            userId: user._id,
-            role: user.role
+            message: "AdminUser approved successfully.",
+            userId: admin._id,
+            role: admin.role
         });
     } catch (err) {
-        console.error("Error approving user:", err.message);
+        console.error("Error approving admin:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to approve user.",
+            message: "Failed to approve admin.",
             error: err.message
         });
     }
 };
 
-// ---------------- Reject User ----------------
+// ---------------- Reject AdminUser ----------------
 exports.rejectRequestUser = async (req, res) => {
     try {
         const { email } = req.body;
-        console.log("Rejecting user email:", email);
+        console.log("Rejecting admin email:", email);
 
-        const user = await User.findOne({ email });
-        if (!user) {
+        const admin = await AdminUser.findOne({ email });
+        if (!admin) {
             return res.status(404).json({
                 success: false,
-                message: "User not found."
+                message: "AdminUser not found."
             });
         }
 
-        await user.deleteOne();
+        await admin.deleteOne();
 
-        console.log("User rejected:", email);
+        console.log("AdminUser rejected:", email);
 
         return res.status(200).json({
             success: true,
-            message: "User rejected successfully.",
-            userId: user._id,
-            role: user.role
+            message: "AdminUser rejected successfully.",
+            userId: admin._id,
+            role: admin.role
         });
     } catch (err) {
-        console.error("Error rejecting user:", err.message);
+        console.error("Error rejecting admin:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to reject user.",
+            message: "Failed to reject admin.",
             error: err.message
         });
     }
 };
 
 
-// ---------------- Approve User ----------------
+// ---------------- Approve AdminUser ----------------
 exports.suspendedRequestUser = async (req, res) => {
     try {
         const { email } = req.body;
-        console.log("suspended user email:", email);
+        console.log("suspended admin email:", email);
 
-        const user = await User.findOne({ email });
-        if (!user) {
+        const admin = await AdminUser.findOne({ email });
+        if (!admin) {
             return res.status(404).json({
                 success: false,
-                message: "User not found."
+                message: "AdminUser not found."
             });
         }
 
-        user.status = "suspended";
-        await user.save();
+        admin.status = "suspended";
+        await admin.save();
 
-        console.log("User suspended:", email);
+        console.log("AdminUser suspended:", email);
 
         return res.status(200).json({
             success: true,
-            message: "User suspended successfully.",
-            userId: user._id,
-            role: user.role
+            message: "AdminUser suspended successfully.",
+            userId: admin._id,
+            role: admin.role
         });
     } catch (err) {
-        console.error("Error suspended user:", err.message);
+        console.error("Error suspended admin:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to suspended user.",
+            message: "Failed to suspended admin.",
             error: err.message
         });
     }
 };
 
-// ---------------- Approve User ----------------
+// ---------------- Approve AdminUser ----------------
 exports.activateRequestUser = async (req, res) => {
     try {
         const { email } = req.body;
-        console.log("activating user email:", email);
+        console.log("activating admin email:", email);
 
-        const user = await User.findOne({ email });
-        if (!user) {
+        const admin = await AdminUser.findOne({ email });
+        if (!admin) {
             return res.status(404).json({
                 success: false,
-                message: "User not found."
+                message: "AdminUser not found."
             });
         }
 
-        user.status = "approved";
-        await user.save();
+        admin.status = "approved";
+        await admin.save();
 
-        console.log("User activating:", email);
+        console.log("AdminUser activating:", email);
 
         return res.status(200).json({
             success: true,
-            message: "User activating successfully.",
-            userId: user._id,
-            role: user.role
+            message: "AdminUser activating successfully.",
+            userId: admin._id,
+            role: admin.role
         });
     } catch (err) {
-        console.error("Error activating user:", err.message);
+        console.error("Error activating admin:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to activating user.",
+            message: "Failed to activating admin.",
             error: err.message
         });
     }
@@ -789,7 +822,7 @@ exports.getAllUsers = async (req, res) => {
     try {
         console.log("Fetching all customers");
 
-        const customers = await User.find({ role: "customer" }).select("-password");
+        const customers = await AdminUser.find({ role: "customer" }).select("-password");
         return res.status(200).json({
             success: true,
             count: customers.length,
@@ -811,7 +844,7 @@ exports.getUserById = async (req, res) => {
         const { id } = req.params;
         console.log("Fetching customer by ID:", id);
 
-        const customer = await User.findOne({ _id: id, role: "customer" }).select("-password");
+        const customer = await AdminUser.findOne({ _id: id, role: "customer" }).select("-password");
 
         if (!customer) {
             return res.status(404).json({
@@ -840,7 +873,7 @@ exports.getAllGuesthouseOwners = async (req, res) => {
     try {
         console.log("Fetching all guesthouse owners");
 
-        const owners = await User.find({ role: "guesthouse_admin" }).select("-password");
+        const owners = await AdminUser.find({ role: "guesthouse_admin" }).select("-password");
         return res.status(200).json({
             success: true,
             count: owners.length,
@@ -862,7 +895,7 @@ exports.getGuesthouseOwnerById = async (req, res) => {
         const { id } = req.params;
         console.log("Fetching guesthouse owner by ID:", id);
 
-        const owner = await User.findOne({ _id: id, role: "guesthouse_admin" }).select("-password");
+        const owner = await AdminUser.findOne({ _id: id, role: "guesthouse_admin" }).select("-password");
 
         if (!owner) {
             return res.status(404).json({

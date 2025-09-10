@@ -108,14 +108,13 @@ exports.searchRooms = async (req, res) => {
     try {
         const { city, minPrice, maxPrice, amenities, capacity, checkIn, checkOut } = req.query;
 
-        // ✅ Guesthouse filter (only approved)
+        // Guesthouse filter (only approved)
         let guesthouseFilter = { status: "approved" };
         if (city) {
             guesthouseFilter.city = { $regex: new RegExp(city, "i") };
         }
 
         const guesthouses = await Guesthouse.find(guesthouseFilter);
-
         if (guesthouses.length === 0) {
             return res.status(200).json({
                 success: true,
@@ -125,7 +124,7 @@ exports.searchRooms = async (req, res) => {
             });
         }
 
-        // ✅ Room filter
+        // Room filter
         let roomFilter = {
             guesthouse: { $in: guesthouses.map(g => g._id) },
             pricePerNight: { $gte: Number(minPrice) || 0, $lte: Number(maxPrice) || 100000 }
@@ -133,23 +132,26 @@ exports.searchRooms = async (req, res) => {
 
         if (capacity) roomFilter.capacity = { $gte: Number(capacity) };
 
-        // ✅ Amenities filter
         if (amenities) {
             roomFilter.amenities = { $all: amenities.split(",") };
         }
 
-        // ✅ Availability filter (optional)
-        if (checkIn && checkOut) {
+        // Availability filter
+        if (checkIn) {
+            const checkInDate = new Date(checkIn);
+            const checkOutDate = checkOut ? new Date(checkOut) : new Date(checkIn);
+
             roomFilter.availability = {
-                $elemMatch: {
-                    startDate: { $lte: new Date(checkIn) },
-                    endDate: { $gte: new Date(checkOut) },
-                    isAvailable: true
+                $not: {
+                    $elemMatch: {
+                        startDate: { $lte: checkOutDate },
+                        endDate: { $gte: checkInDate },
+                        isAvailable: false
+                    }
                 }
             };
         }
 
-        // ✅ Fetch rooms
         const rooms = await Room.find(roomFilter).populate("guesthouse");
 
         return res.status(200).json({
@@ -160,7 +162,7 @@ exports.searchRooms = async (req, res) => {
         });
 
     } catch (err) {
-        console.error("❌ Error in searchRooms:", err);
+        console.error("Error in searchRooms:", err);
         return res.status(500).json({
             success: false,
             error: "Search failed"

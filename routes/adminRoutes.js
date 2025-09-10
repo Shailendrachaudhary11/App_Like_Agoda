@@ -38,9 +38,8 @@ router.put("/activate/guestHouse/:id", auth(["admin"]), adminController.activate
 // guesthouses details
 router.get("/getGuestHouses", auth(["admin"]), adminController.getAllGuestHouses);
 router.get("/getGuestHouse/:id", auth(["admin"]), adminController.getGuestHousesById);
+
 router.get("/guestHouse/rooms/:guesthouseId", auth(["admin"]), adminController.getRoomGuestHouseBy);
-
-
 router.get("/room/:id", auth(["admin"]), adminController.getRoomById);
 router.put("/room/edit/:id", auth(["admin"]), uploadRooms.array("photos", 5), adminController.editRoom);
 router.delete("/room/delete/:id", auth(["admin"]), adminController.deleteRoom);
