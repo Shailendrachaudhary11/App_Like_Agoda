@@ -8,13 +8,6 @@ const uploadRooms = require('../middlewares/uploadRooms');
 
 ////////////////////////////====================  CUSTOMER  ===========================////////////////////////
 
-router.get("/viewProfile", auth([ "customer"]), customerController.getMyProfile);
-router.put("/updateProfile", auth(["customer"]), uploadUser.single('profileImage'), customerController.updateProfile);
-router.post("/change-password", auth(["customer"]), customerController.changePassword);
-router.post('/forgot-password', auth([ "customer"]),customerController.forgotPassword);
-router.post("/reset-password", auth([ "customer"]), customerController.resetPassword);
-
-
 // guesthouse near by me
 router.get("/guesthouses/nearby",auth(["customer"]),customerController.searchNearbyRooms);
 
@@ -33,13 +26,15 @@ router.post("/book-room",auth(["customer"]), customerController.bookroom);
 // payment and confirm Booking
 router.post("/payment/:bookingId",auth(["customer"]),customerController.makePayment)
 
-// GET customer get all booking 
-router.get("/allBooking",auth(["customer"]),customerController.getAllBooking)
-
-
 // get booking by Id
 router.get("/booking/:bookingId",auth(["customer"]),customerController.getBookingById);
-// router.post("/review-rating", auth(["admin"]),customerController.addReviewRating)
+
+// GET customer get all booking 
+router.get("/allBooking",auth(["customer"]),customerController.getAllBooking);
+
+router.post("/reviews", auth(["customer"]),customerController.addReviewRating);
+
+router.get("/guesthouses/:id/reviews", auth(["customer"]), customerController.getAllReviews)
 
 
 module.exports = router;

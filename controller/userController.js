@@ -2,14 +2,14 @@ const dotenv = require("dotenv");
 const User = require("../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { sendEmail } = require("../utils/sendEmail");
+const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 
 
 // ---------------------- REGISTER USER ---------------
 exports.register = async (req, res) => {
     try {
-        const { name, email, phone, password, role } = req.body;
+        const { name, email, phone, password, role, profileImage } = req.body;
 
         // Check if user already exists
         const existingUser = await User.findOne({ email });
@@ -32,9 +32,9 @@ exports.register = async (req, res) => {
             phone,
             password: hashedPassword,
             role,
-            profileImage: req.file ? req.file.path : undefined, // multer se aayi file
         });
 
+        if(req.file) profileImage= req.file;
         await newUser.save();
 
         return res.status(201).json({
@@ -114,5 +114,196 @@ exports.login = async (req, res) => {
     }
 };
 
+// ----------------- get own profile ---------------
+exports.getMyProfile = async (req, res) => {
+    try {
+        res.status(200).json({
+            success: true,
+            data: req.user
+        });
+    } catch (err) {
+        console.error("Error fetching profile:", err.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch profile",
+            error: err.message
+        });
+    }
+};
 
+// ---------------- update profile -----------------
+exports.updateProfile = async (req, res) => {
+    try {
+        console.log("Updating profile ", req.user._id);
+
+        if (req.body.name) req.user.name = req.body.name;
+        if (req.body.phone) req.user.phone = req.body.phone;
+        if (req.file) req.user.profileImage = req.file.path;
+
+        await req.user.save();
+
+        console.log("Profile updated successfully:", req.user._id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully.",
+            data: req.user
+        });
+    } catch (err) {
+        console.error("Error updating profile:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update profile.",
+            error: err.message
+        });
+    }
+};
+
+
+// ------------------ forgot password -----------
+exports.changePassword = async (req, res) => {
+    try {
+        const { oldPassword, newPassword, confirmPassword } = req.body;
+
+        //  Check all fields
+        if (!oldPassword || !newPassword || !confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide oldPassword, newPassword, and confirmPassword"
+            });
+        }
+
+        //  Check if newPassword and confirmPassword match
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "New password and confirm password do not match"
+            });
+        }
+
+        const user = req.user; // Assuming req.user is set by auth middleware
+
+        //  Check old password
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: "Old password is incorrect" });
+        }
+
+        //  Hash new password and save
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        await user.save();
+
+        res.status(200).json({ success: true, message: "Password updated successfully" });
+
+    } catch (err) {
+        console.error("Error changing password:", err.message);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+
+// ---------------- forgot password using email ----------
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "user not found" });
+        }
+
+        // Generate OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiry = Date.now() + 10 * 60 * 1000;
+
+        user.otp = otp;
+        user.otpExpiry = otpExpiry;
+        await user.save();
+
+        // Send OTP
+        const emailSent = await sendEmail(
+            user.email,
+            "Password Reset OTP",
+            `Your OTP is ${otp}. It will expire in 10 minutes.`
+        );
+
+        if (!emailSent) {
+            return res.status(500).json({ success: false, message: "Failed to send OTP email" });
+        }
+
+        res.status(200).json({ success: true, message: "OTP sent to email" });
+
+    } catch (err) {
+        console.error("Forgot Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+// ------------------- OTP verify // Verify OTP
+exports.verifyOtp = async (req, res) => {
+    try {
+        const { otp } = req.body;
+
+        const id = req.user.id;
+        const user = await User.findById(id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "user not found" });
+        }
+
+        // Validate OTP
+        if (user.otp !== otp || Date.now() > user.otpExpiry) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+        user.otp = undefined;
+        user.otpExpiry = undefined;
+
+        await user.save();
+        res.status(200).json({ success: true, message: "OTP verified successfully" });
+
+    } catch (err) {
+        console.error("OTP Verification Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+
+// ------------------ reset Password -----------------------
+exports.resetPassword = async (req, res) => {
+    try {
+        const { newPassword, confirmPassword } = req.body;
+
+        const id = req.user.id;
+        const user = await User.findById(id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "user not found" });
+        }
+
+        if (!newPassword || !confirmPassword) {
+            return res.status(400).json({ success: false, message: "Password fields are required" });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ success: false, message: "Passwords do not match" });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+
+        // Clear OTP
+        user.otp = undefined;
+        user.otpExpiry = undefined;
+
+        await user.save();
+
+        res.json({ success: true, message: "Password reset successful" });
+
+    } catch (err) {
+        console.error("Set New Password Error:", err);
+        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
 

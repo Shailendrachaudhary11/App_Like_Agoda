@@ -8,15 +8,7 @@ const guestHouseRoutes = require('./routes/guesthouseRoutes');
 const ensureUploadDirs = require("./utils/createUploadDirs");
 const customerRoutes = require("./routes/customerRoutes")
 
-
-
 const app = express();
-
-console.log("SMTP_HOST:", process.env.SMTP_HOST);
-console.log("SMTP_PORT:", process.env.SMTP_PORT);
-console.log("SMTP_SECURE:", process.env.SMTP_SECURE);
-
-
 
 // connect DB
 connectDB();
@@ -24,7 +16,6 @@ connectDB();
 // middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 
 ensureUploadDirs([
   "uploads/guestHouse",

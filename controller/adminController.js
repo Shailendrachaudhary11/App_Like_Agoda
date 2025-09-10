@@ -1,5 +1,5 @@
 const dotenv = require("dotenv");
-dotenv.config();  // ✅ add this
+dotenv.config(); 
 const AdminUser = require("../models/adminUser");
 const User = require("../models/user");
 const Guesthouse = require("../models/Guesthouse");
@@ -105,7 +105,7 @@ exports.changePassword = async (req, res) => {
     try {
         const { oldPassword, newPassword, confirmPassword } = req.body;
 
-        // ✅ Check all fields
+        //  Check all fields
         if (!oldPassword || !newPassword || !confirmPassword) {
             return res.status(400).json({
                 success: false,
@@ -113,7 +113,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // ✅ Check if newPassword and confirmPassword match
+        //  Check if newPassword and confirmPassword match
         if (newPassword !== confirmPassword) {
             return res.status(400).json({
                 success: false,
@@ -123,13 +123,13 @@ exports.changePassword = async (req, res) => {
 
         const user = req.user; // Assuming req.user is set by auth middleware
 
-        // ✅ Check old password
+        //  Check old password
         const isMatch = await bcrypt.compare(oldPassword, user.password);
         if (!isMatch) {
             return res.status(400).json({ success: false, message: "Old password is incorrect" });
         }
 
-        // ✅ Hash new password and save
+        //  Hash new password and save
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         user.password = hashedPassword;
         await user.save();
@@ -196,8 +196,8 @@ exports.verifyOtp = async (req, res) => {
         if (admin.otp !== otp || Date.now() > admin.otpExpiry) {
             return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
         }
-        admin.otp=undefined;
-        admin.otpExpiry=undefined;
+        admin.otp = undefined;
+        admin.otpExpiry = undefined;
 
         await admin.save();
         res.status(200).json({ success: true, message: "OTP verified successfully" });
@@ -214,16 +214,6 @@ exports.setNewPassword = async (req, res) => {
     try {
         const { newPassword, confirmPassword } = req.body;
 
-        if (!newPassword || !confirmPassword) {
-            return res.status(400).json({ success: false, message: "Password fields are required" });
-        }
-
-        if (newPassword !== confirmPassword) {
-            return res.status(400).json({ success: false, message: "Passwords do not match" });
-        }
-
-        const { otp } = req.body;
-
         const id = req.user.id;
         const admin = await AdminUser.findById(id);
 
@@ -231,6 +221,13 @@ exports.setNewPassword = async (req, res) => {
             return res.status(404).json({ success: false, message: "Admin not found" });
         }
 
+        if (!newPassword || !confirmPassword) {
+            return res.status(400).json({ success: false, message: "Password fields are required" });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ success: false, message: "Passwords do not match" });
+        }
 
         // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -249,7 +246,6 @@ exports.setNewPassword = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };
-
 
 
 // ---------------- Get Profile ----------------
@@ -533,7 +529,7 @@ exports.deleteRoom = async (req, res) => {
         const { id } = req.params;
 
         // Use findById if roomid is MongoDB _id
-        const room = await Room.findById(id); // optional populate
+        const room = await Room.findById(id); 
 
         if (!room) {
             return res.status(404).json({
