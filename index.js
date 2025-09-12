@@ -31,7 +31,7 @@ app.use('/api/adminAuth', adminRoutes);
 app.use('/api/userAuth', userRoutes);
 
 // routes for work with guestHouse
-app.use('/api/guestHouse', guestHouseRoutes);
+app.use('/api/guesthouse', guestHouseRoutes);
 
 // customer 
 app.use('/api/customer', customerRoutes)

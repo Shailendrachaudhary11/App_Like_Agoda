@@ -13,7 +13,7 @@ const guesthouseSchema = new mongoose.Schema({
     contactNumber: String,
     description: String,
     images: { type: [String] },
-    status: { type: String, enum: ['pending', 'approved', 'suspended'], default: 'pending' },
+    status: { type: String, enum: ['active','suspended'], default: 'active' },
     createdAt: { type: Date, default: Date.now }
 });
 guesthouseSchema.index({ location: '2dsphere' });

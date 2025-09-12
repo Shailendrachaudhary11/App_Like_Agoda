@@ -13,15 +13,15 @@ router.post("/register", uploadAdmin.single('profileImage'), registerValidation,
 // login router
 router.post('/login', adminController.login);
 
-// forgot password
-router.put("/change-Password", auth(["admin"]), adminController.changePassword);
-router.post('/forgot-password', auth(['admin']), adminController.forgotPassword);
-router.post('/verify-otp', auth(['admin']), adminController.verifyOtp);
-router.post("/setNew-password", auth(['admin']), adminController.setNewPassword);
+// // forgot password
+// router.put("/change-Password", auth(["admin"]), adminController.changePassword);
+// router.post('/forgot-password', auth(['admin']), adminController.forgotPassword);
+// router.post('/verify-otp', auth(['admin']), adminController.verifyOtp);
+// router.post("/setNew-password", auth(['admin']), adminController.setNewPassword);
 
-// get own details
-router.get('/getProfile', auth(["admin"]), adminController.getProfile);
-router.put('/updateProfile', auth(["admin"]), uploadAdmin.single('profileImage'), adminController.updateProfile)
+// // get own details
+// router.get('/getProfile', auth(["admin"]), adminController.getProfile);
+// router.put('/updateProfile', auth(["admin"]), uploadAdmin.single('profileImage'), adminController.updateProfile)
 
 // users 
 router.put("/approve/user", auth(["admin"]), adminController.approvalRequestUser);

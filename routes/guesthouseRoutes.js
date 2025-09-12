@@ -4,35 +4,35 @@ const guesthouseController = require('../controller/guesthouseController');
 const auth = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadMiddleware')
 const uploadRooms = require('../middlewares/uploadRooms');
-const uploadUser = require("../middlewares/uploadUser");
 
 
-router.get("/viewProfile", auth(["guesthouse_admin"]), guesthouseController.getMyProfile);
-router.put("/updateProfile", auth(["guesthouse_admin"]), uploadUser.single('profileImage'), guesthouseController.updateProfile);
-router.post("/change-password", auth(["guesthouse_admin"]), guesthouseController.changePassword);
-router.post('/forgot-password', auth(["guesthouse_admin"]),guesthouseController.forgotPassword);
-router.post("/reset-password", auth(["guesthouse_admin"]), guesthouseController.resetPassword);
+//Guesthouse Profile Management
+router.post("/manage-guesthouse", auth(["guesthouse"]),upload.array("images", 5), guesthouseController.manageGuestHouse);
+router.get("/my-guesthouse", auth(["guesthouse"]), guesthouseController.getMyGuesthouse);
 
-// Only "guesthouse_admin" can add guesthouses
-// GUESTHOUSE
-router.post("/add", auth(["guesthouse_admin"]), upload.array("images", 5), guesthouseController.addGuesthouse);
-router.get("/my-guesthouses", auth(["guesthouse_admin"]), guesthouseController.getMyGuesthouses);
-router.put("/update/:id", auth(["guesthouse_admin"]), upload.array("images", 5), guesthouseController.updateGuesthouse);
-router.delete("/delete/:id", auth(["guesthouse_admin"]), guesthouseController.deleteGuesthouse);
-router.get("/:guestId", auth(["guesthouse_admin"]), guesthouseController.getGuestHouseById); // <-- Last
-
-// ROOMS
-router.post("/add/room", auth(["guesthouse_admin"]), uploadRooms.array("photos", 5), guesthouseController.addRoom);
-router.get("/my-rooms/:guestHouseId", auth(["guesthouse_admin"]), guesthouseController.getAllRooms);
-router.put("/update/room/:guesthouseId/:roomId", auth(["guesthouse_admin"]), uploadRooms.array("photos", 5), guesthouseController.updateRoom);
-router.delete("/delete/room/:guesthouseId/:roomId", auth(["guesthouse_admin"]), guesthouseController.deleteRoom);
-
-// PROMO CODES
-router.post("/add-promo", auth(["guesthouse_admin"]), guesthouseController.addPromo);
-router.get("/my-promos", auth(["guesthouse_admin"]), guesthouseController.getOwnerPromos);
-router.put("/updatePromo/:promoId", auth(["guesthouse_admin"]), guesthouseController.updatePromo);
-router.delete("/deletePromo/:promoId", auth(["guesthouse_admin"]), guesthouseController.deletePromo);
+//  Room Management
+router.post("/add/room", auth(["guesthouse"]), uploadRooms.array("photos", 5), guesthouseController.addRoom);
+router.get("/rooms",auth(["guesthouse"]),guesthouseController.getAllRooms);
+router.get("/room/:roomId", auth(["guesthouse"]),guesthouseController.getRoomById);
+router.put("/update/room/:roomId", auth(["guesthouse"]), uploadRooms.array("photos", 5), guesthouseController.updateRoom);
+router.delete("/delete/room/:roomId", auth(["guesthouse"]), guesthouseController.deleteRoom);
 
 
+// Booking Management
+router.get("/bookings", auth(["guesthouse"]), guesthouseController.getAllBookings);
+router.get("/booking/upcoming", auth(["guesthouse"]), guesthouseController.getUpcomingBookings);
+router.get("/booking/past", auth(["guesthouse"]), guesthouseController.getPastBookings);
+router.get("/booking/:bookingId", auth(["guesthouse"]), guesthouseController.getBookingById);
+router.put("/booking/:bookingId/accept", auth(["guesthouse"]), guesthouseController.acceptBooking);
+router.put("/booking/:bookingId/reject", auth(["guesthouse"]), guesthouseController.rejectBooking);
+
+
+// Reviews & Ratings
+router.get("/reviews", auth(["guesthouse"]),guesthouseController.getAllReviews);
+router.get("/review/:reviewId", auth(["guesthouse"]), guesthouseController.getReviewById);
+
+// Notification
+router.get("/notifications", auth(["guesthouse"]), guesthouseController.getNotifications);
+router.put("/notification/:notificationId/read", auth(["guesthouse"]), guesthouseController.readNotification);
 
 module.exports = router;

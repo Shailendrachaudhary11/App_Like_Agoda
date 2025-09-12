@@ -1,5 +1,5 @@
-const dotenv = require("dotenv");
-dotenv.config(); 
+// const dotenv = require("dotenv");
+// dotenv.config(); 
 const AdminUser = require("../models/adminUser");
 const Guesthouse = require("../models/Guesthouse");
 const bcrypt = require("bcryptjs");
@@ -8,6 +8,7 @@ const Room = require("../models/Room")
 const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 const Promo = require("../models/Promo");
+const User = require("../models/user")
 
 
 // ---------------- Admin Registration ----------------
@@ -51,6 +52,7 @@ exports.register = async (req, res) => {
         });
     }
 };
+
 
 // ---------------- Admin Login ----------------
 exports.login = async (req, res) => {
@@ -99,243 +101,6 @@ exports.login = async (req, res) => {
     }
 };
 
-// ------------------ forgot password -----------
-exports.changePassword = async (req, res) => {
-    try {
-        const { oldPassword, newPassword, confirmPassword } = req.body;
-
-        //  Check all fields
-        if (!oldPassword || !newPassword || !confirmPassword) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide oldPassword, newPassword, and confirmPassword"
-            });
-        }
-
-        // 🔹 Always fetch admin from DB to ensure password is available
-        const admin = await AdminUser.findById(req.user.id);
-        if (!admin) {
-            return res.status(404).json({
-                success: false,
-                message: "AdminUser not found"
-            });
-        }
-
-        //  Check old password
-        const isMatch = await bcrypt.compare(oldPassword, admin.password);
-        if (!isMatch) {
-            return res.status(401).json({ // unauthorized
-                success: false,
-                message: "Old password is incorrect"
-            });
-        }
-
-        //  Validate new password length
-        if (newPassword.length < 6) {
-            return res.status(400).json({
-                success: false,
-                message: "Password must be at least 6 characters long"
-            });
-        }
-
-        //  Check if newPassword and confirmPassword match
-        if (newPassword !== confirmPassword) {
-            return res.status(400).json({
-                success: false,
-                message: "New password and confirm password do not match"
-            });
-        }
-
-        //  Prevent reusing old password
-        if (oldPassword === newPassword) {
-            return res.status(409).json({ // conflict
-                success: false,
-                message: "Old password and new password must be different"
-            });
-        }
-
-        //  Hash new password and save
-        admin.password = await bcrypt.hash(newPassword, 10);
-        await admin.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Password updated successfully"
-        });
-
-    } catch (err) {
-        console.error("Error changing password:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Server error",
-            error: err.message
-        });
-    }
-};
-
-
-
-// ---------------- forgot password using email ----------
-exports.forgotPassword = async (req, res) => {
-    try {
-        const { email } = req.body;
-        const admin = await AdminUser.findOne({ email });
-
-        if (!admin) {
-            return res.status(404).json({ success: false, message: "Admin not found" });
-        }
-
-        // Generate OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpiry = Date.now() + 10 * 60 * 1000;
-
-        admin.otp = otp;
-        admin.otpExpiry = otpExpiry;
-        await admin.save();
-
-        // Send OTP
-        const emailSent = await sendEmail(
-            admin.email,
-            "Password Reset OTP",
-            `Your OTP is ${otp}. It will expire in 10 minutes.`
-        );
-
-        if (!emailSent) {
-            return res.status(500).json({ success: false, message: "Failed to send OTP email" });
-        }
-
-        res.status(200).json({ success: true, message: "OTP sent to email" });
-
-    } catch (err) {
-        console.error("Forgot Password Error:", err);
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
-    }
-};
-
-// ------------------- OTP verify // Verify OTP
-exports.verifyOtp = async (req, res) => {
-    try {
-        const { otp } = req.body;
-
-        const id = req.admin.id;
-        const admin = await AdminUser.findById(id);
-
-        if (!admin) {
-            return res.status(404).json({ success: false, message: "Admin not found" });
-        }
-
-        // Validate OTP
-        if (admin.otp !== otp || Date.now() > admin.otpExpiry) {
-            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
-        }
-        admin.otp = undefined;
-        admin.otpExpiry = undefined;
-
-        await admin.save();
-        res.status(200).json({ success: true, message: "OTP verified successfully" });
-
-    } catch (err) {
-        console.error("OTP Verification Error:", err);
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
-    }
-};
-
-
-// ------------------ reset Password -----------------------
-exports.setNewPassword = async (req, res) => {
-    try {
-        const { newPassword, confirmPassword } = req.body;
-
-        const id = req.admin.id;
-        const admin = await AdminUser.findById(id);
-
-        if (!admin) {
-            return res.status(404).json({ success: false, message: "Admin not found" });
-        }
-
-        if (!newPassword || !confirmPassword) {
-            return res.status(400).json({ success: false, message: "Password fields are required" });
-        }
-
-        if (newPassword !== confirmPassword) {
-            return res.status(400).json({ success: false, message: "Passwords do not match" });
-        }
-
-        
-        // Hash new password
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        admin.password = hashedPassword;
-
-        // Clear OTP
-        admin.otp = undefined;
-        admin.otpExpiry = undefined;
-
-        await admin.save();
-
-        res.json({ success: true, message: "Password reset successful" });
-
-    } catch (err) {
-        console.error("Set New Password Error:", err);
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
-    }
-};
-
-
-// ---------------- Get Profile ----------------
-exports.getProfile = async (req, res) => {
-    try {
-        const id = req.admin.id;
-        console.log("Fetching profile for admin ID:", id);
-
-        const admin = await AdminUser.findById(id).select("-password").select("-otp").select("-otpExpiry")
-        if (!admin) {
-            return res.status(404).json({
-                success: false,
-                message: "Admin not found."
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: admin
-        });
-    } catch (err) {
-        console.error("Error fetching admin profile:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Error retrieving admin profile.",
-            error: err.message
-        });
-    }
-};
-
-// ---------------- Update Profile ----------------
-exports.updateProfile = async (req, res) => {
-    try {
-        console.log("Updating profile for admin ID:", req.admin._id);
-
-        if (req.body.name) req.admin.name = req.body.name;
-        if (req.body.phone) req.admin.phone = req.body.phone;
-        if (req.file) req.admin.profileImage = req.file.path;
-
-        await req.admin.save();
-
-        console.log("Profile updated successfully:", req.admin._id);
-
-        return res.status(200).json({
-            success: true,
-            message: "Profile updated successfully.",
-            data: req.admin
-        });
-    } catch (err) {
-        console.error("Error updating profile:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to update profile.",
-            error: err.message
-        });
-    }
-};
 
 // ---------------- Approve Guesthouse ----------------
 exports.approveGuesthouse = async (req, res) => {
@@ -371,6 +136,7 @@ exports.approveGuesthouse = async (req, res) => {
     }
 };
 
+
 // ---------------- Reject Guesthouse ----------------
 exports.rejectGuesthouse = async (req, res) => {
     try {
@@ -403,6 +169,7 @@ exports.rejectGuesthouse = async (req, res) => {
         });
     }
 };
+
 
 // ----------------- Suspended GuestHouse ------------
 exports.suspendedGuestHouse = async (req, res) => {
@@ -437,6 +204,7 @@ exports.suspendedGuestHouse = async (req, res) => {
     }
 }
 
+
 // ----------------- Activate GuestHouse --------------
 exports.activateGuesthouse = async (req, res) => {
     try {
@@ -468,7 +236,9 @@ exports.activateGuesthouse = async (req, res) => {
             error: err.message
         });
     }
+
 }
+
 
 // ---------------- GET rooms by id ----------------
 exports.getRoomById = async (req, res) => {
@@ -498,6 +268,7 @@ exports.getRoomById = async (req, res) => {
         });
     }
 };
+
 
 // ---------------- PUT update rooms by id ----------------
 exports.editRoom = async (req, res) => {
@@ -556,13 +327,14 @@ exports.editRoom = async (req, res) => {
     }
 };
 
+
 // ------------- DELETE ROOMS --------------
 exports.deleteRoom = async (req, res) => {
     try {
         const { id } = req.params;
 
         // Use findById if roomid is MongoDB _id
-        const room = await Room.findById(id); 
+        const room = await Room.findById(id);
 
         if (!room) {
             return res.status(404).json({
@@ -586,6 +358,7 @@ exports.deleteRoom = async (req, res) => {
         });
     }
 };
+
 
 // --------------- get room by guest house Id
 exports.getRoomGuestHouseBy = async (req, res) => {
@@ -624,38 +397,39 @@ exports.getRoomGuestHouseBy = async (req, res) => {
 // ---------------- Approve AdminUser ----------------
 exports.approvalRequestUser = async (req, res) => {
     try {
-        const { email } = req.body;
-        console.log("Approving admin email:", email);
+        const { email } = req.body; // ✅ only email string
+        console.log("Approving user email:", email);
 
-        const admin = await AdminUser.findOne({ email: email.toLowerCase() });
+        const user = await User.findOne({ email: email.toLowerCase() }); // ✅ add await
 
-        if (!admin) {
+        if (!user) {
             return res.status(404).json({
                 success: false,
-                message: "AdminUser not found.."
+                message: "User not found.."
             });
         }
 
-        admin.status = "approved";
-        await admin.save();
+        user.status = "approved";
+        await user.save();
 
-        console.log("AdminUser approved:", email);
+        console.log("User approved:", email);
 
         return res.status(200).json({
             success: true,
-            message: "AdminUser approved successfully.",
-            userId: admin._id,
-            role: admin.role
+            message: "User approved successfully.",
+            userId: user._id,   // ✅ correct variable
+            role: user.role
         });
     } catch (err) {
-        console.error("Error approving admin:", err.message);
+        console.error("Error approving user:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Failed to approve admin.",
+            message: "Failed to approve user.",
             error: err.message
         });
     }
 };
+
 
 // ---------------- Reject AdminUser ----------------
 exports.rejectRequestUser = async (req, res) => {
@@ -873,7 +647,7 @@ exports.getAllGuesthouseOwners = async (req, res) => {
     try {
         console.log("Fetching all guesthouse owners");
 
-        const owners = await AdminUser.find({ role: "guesthouse_admin" }).select("-password");
+        const owners = await User.find({ role: "guesthouse" }).select("-password");
         return res.status(200).json({
             success: true,
             count: owners.length,
@@ -895,7 +669,7 @@ exports.getGuesthouseOwnerById = async (req, res) => {
         const { id } = req.params;
         console.log("Fetching guesthouse owner by ID:", id);
 
-        const owner = await AdminUser.findOne({ _id: id, role: "guesthouse_admin" }).select("-password");
+        const owner = await User.findOne({ _id: id, role: "guesthouse" }).select("-password");
 
         if (!owner) {
             return res.status(404).json({

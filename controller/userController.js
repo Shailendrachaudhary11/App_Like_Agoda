@@ -1,4 +1,3 @@
-const dotenv = require("dotenv");
 const User = require("../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -8,51 +7,52 @@ const crypto = require("crypto");
 
 // ---------------------- REGISTER USER ---------------
 exports.register = async (req, res) => {
-    try {
-        const { name, email, phone, password, role, profileImage } = req.body;
+  try {
+    const { name, email, phone, password, role } = req.body;
 
-        // Check if user already exists
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            console.warn(`[AUTH] User already exists: ${email}`);
-            return res.status(400).json({
-                success: false,
-                statusCode: 400,
-                message: "User already registered with this email.",
-            });
-        }
-
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Save user
-        const newUser = new User({
-            name,
-            email,
-            phone,
-            password: hashedPassword,
-            role,
-        });
-
-        if (req.file) profileImage = req.file;
-        await newUser.save();
-
-        return res.status(201).json({
-            success: true,
-            statusCode: 201,
-            message: "User created successfully. Wait for admin approval.",
-            Id: newUser._id
-        });
-    } catch (err) {
-        console.error("[AUTH] Error during registration:", err.message);
-        return res.status(500).json({
-            success: false,
-            statusCode: 500,
-            message: "Something went wrong during registration.",
-            error: err.message,
-        });
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      console.warn(`[AUTH] User already exists: ${email}`);
+      return res.status(400).json({
+        success: false,
+        statusCode: 400,
+        message: "User already registered with this email.",
+      });
     }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Save user
+    const newUser = new User({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      role,
+      profileImage: req.file ? req.file.path : null
+    });
+
+    await newUser.save();
+
+    return res.status(201).json({
+      success: true,
+      statusCode: 201,
+      message: "User created successfully. Wait for admin approval.",
+      Id: newUser._id
+    });
+  } catch (err) {
+    console.error("[AUTH] Error during registration:", err.message);
+    return res.status(500).json({
+      success: false,
+      statusCode: 500,
+      message: "Something went wrong during registration.",
+      error: err.message,
+    });
+  }
 };
+
 
 // ------------------ LOGIN USER -----------------
 exports.login = async (req, res) => {
@@ -99,7 +99,7 @@ exports.login = async (req, res) => {
         const token = jwt.sign(
             { id: user._id, role: user.role, email: user.email },
             process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+            { expiresIn: "20d" }
         );
 
         console.log(`[AUTH] Login successfully: ${email}`);
