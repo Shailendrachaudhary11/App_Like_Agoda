@@ -9,97 +9,107 @@ const { createNotification } = require("../utils/notificationHelper");
 
 
 exports.manageGuestHouse = async (req, res) => {
-    try {
-        const ownerId = req.user._id;
-        const { name, address, city, state, location, contactNumber, description } = req.body;
+  try {
+    const ownerId = req.user._id;
+    const { name, address, city, state, location, contactNumber, description } = req.body;
 
-        console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
+    console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
 
-        // Validate images
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "At least 1 image is required",
-            });
-        }
-
-        const images = req.files.map((file) => file.path);
-
-        // Check if guesthouse already exists for this owner
-        let guesthouse = await Guesthouse.findOne({ owner: ownerId });
-
-        if (guesthouse) {
-            // Update existing guesthouse
-            guesthouse.name = name || guesthouse.name;
-            guesthouse.address = address || guesthouse.address;
-            guesthouse.city = city || guesthouse.city;
-            guesthouse.state = state || guesthouse.state;
-            guesthouse.location = location || guesthouse.location;
-            guesthouse.contactNumber = contactNumber || guesthouse.contactNumber;
-            guesthouse.description = description || guesthouse.description;
-            guesthouse.images = images.length > 0 ? images : guesthouse.images;
-
-            await guesthouse.save();
-
-            return res.status(200).json({
-                success: true,
-                message: "Guesthouse updated successfully.",
-                data: {
-                    guesthouseId: guesthouse._id,
-                    status: guesthouse.status,
-                },
-            });
-        } else {
-            // Create new guesthouse
-            // Check for duplicate name across platform
-            const duplicate = await Guesthouse.findOne({ name });
-            if (duplicate) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Guesthouse name must be unique",
-                });
-            }
-
-            guesthouse = new Guesthouse({
-                owner: ownerId,
-                name,
-                address,
-                city,
-                state,
-                location,
-                contactNumber,
-                description,
-                images,
-            });
-
-            await guesthouse.save();
-
-            return res.status(201).json({
-                success: true,
-                message: "Guesthouse submitted successfully.",
-                data: {
-                    guesthouseId: guesthouse._id,
-                    status: guesthouse.status,
-                },
-            });
-        }
-    } catch (err) {
-        console.error("[GUESTHOUSE] Error:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while managing guesthouse",
-            error: err.message,
-        });
+    // Validate images
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least 1 image is required",
+      });
     }
+
+    // Save only filenames
+    const images = req.files.map((file) => file.filename);
+
+    // BASE_URL for frontend
+    const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const imagesWithUrl = images.map((name) => `${BASE_URL}/uploads/guestHouseImage/${name}`);
+
+    // Check if guesthouse already exists for this owner
+    let guesthouse = await Guesthouse.findOne({ owner: ownerId });
+
+    if (guesthouse) {
+      // Update existing guesthouse
+      guesthouse.name = name || guesthouse.name;
+      guesthouse.address = address || guesthouse.address;
+      guesthouse.city = city || guesthouse.city;
+      guesthouse.state = state || guesthouse.state;
+      guesthouse.location = location || guesthouse.location;
+      guesthouse.contactNumber = contactNumber || guesthouse.contactNumber;
+      guesthouse.description = description || guesthouse.description;
+      
+      // Merge old images with new uploads
+      guesthouse.guestHouseImage = images.length > 0 ? images : guesthouse.guestHouseImage;
+
+      await guesthouse.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Guesthouse updated successfully.",
+        data: {
+          guesthouseId: guesthouse._id,
+          status: guesthouse.status,
+          guestHouseImage: imagesWithUrl, // frontend friendly URLs
+        },
+      });
+    } else {
+      // Check for duplicate name
+      const duplicate = await Guesthouse.findOne({ name });
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: "Guesthouse name must be unique",
+        });
+      }
+
+      // Create new guesthouse
+      guesthouse = new Guesthouse({
+        owner: ownerId,
+        name,
+        address,
+        city,
+        state,
+        location,
+        contactNumber,
+        description,
+        images,
+      });
+
+      await guesthouse.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "Guesthouse submitted successfully.",
+        data: {
+          guesthouseId: guesthouse._id,
+          status: guesthouse.status,
+          images: imagesWithUrl, // frontend friendly URLs
+        },
+      });
+    }
+  } catch (err) {
+    console.error("[GUESTHOUSE] Error:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while managing guesthouse",
+      error: err.message,
+    });
+  }
 };
 
 exports.getMyGuesthouse = async (req, res) => {
     try {
-        const guesthouse = await Guesthouse.find({
+        const guesthouses = await Guesthouse.find({
             owner: req.user._id,
+            status: "active"
         });
 
-        if (!guesthouse.length) {
+        if (!guesthouses.length) {
             return res.status(200).json({
                 success: true,
                 message: "No approved guesthouses found",
@@ -107,20 +117,29 @@ exports.getMyGuesthouse = async (req, res) => {
             });
         }
 
+        const baseUrl = process.env.BASE_URL || `http://localhost:5000`;
+
+        const data = guesthouses.map(gh => ({
+            ...gh.toObject(),
+            guestHouseImage: gh.guestHouseImage.map(img => `${baseUrl}/${img}`)
+        }));
+
         return res.status(200).json({
             success: true,
             message: "Guesthouses fetched successfully",
-            data: guesthouse,
+            data
         });
+
     } catch (err) {
-        console.error("[GUESTHOUSE] Error fetching guesthouse:", err.message);
+        console.error("Error fetching guesthouse:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Internal server error while fetching guesthouse",
-            error: err.message,
+            message: "Internal server error",
+            error: err.message
         });
     }
 };
+
 
 exports.addRoom = async (req, res) => {
     try {
@@ -137,7 +156,7 @@ exports.addRoom = async (req, res) => {
             availability,
         } = req.body;
 
-        //  Validate required fields
+        // Validate required fields
         if (
             !roomNumber ||
             !title ||
@@ -154,10 +173,8 @@ exports.addRoom = async (req, res) => {
             });
         }
 
-        //  Check guesthouse ownership & approval
-        const guesthouse = await Guesthouse.findOne({
-            owner: ownerId,
-        });
+        // Check guesthouse ownership & approval
+        const guesthouse = await Guesthouse.findOne({ owner: ownerId });
 
         if (!guesthouse) {
             return res.status(403).json({
@@ -168,7 +185,8 @@ exports.addRoom = async (req, res) => {
         }
 
         const guesthouseId = guesthouse._id;
-        //  Check duplicate room number
+
+        // Check duplicate room number
         const existingRoom = await Room.findOne({ guesthouse: guesthouseId, roomNumber });
         if (existingRoom) {
             return res.status(400).json({
@@ -177,7 +195,10 @@ exports.addRoom = async (req, res) => {
             });
         }
 
-        //  Create new room
+        // Save only filenames in DB
+        const photos = req.files ? req.files.map((f) => f.filename) : [];
+
+        // Create new room
         const newRoom = new Room({
             guesthouse: guesthouseId,
             roomNumber,
@@ -189,15 +210,22 @@ exports.addRoom = async (req, res) => {
             priceMonthly,
             capacity,
             availability,
-            photos: req.files ? req.files.map((f) => f.path) : [],
+            photos,
         });
 
         await newRoom.save();
 
+        // Generate full URLs for frontend
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const photosWithUrl = photos.map((name) => `${BASE_URL}/uploads/rooms/${name}`);
+
         return res.status(201).json({
             success: true,
             message: "Room added successfully.",
-            data: newRoom,
+            data: {
+                ...newRoom.toObject(),
+                photos: photosWithUrl, // frontend friendly
+            },
         });
     } catch (err) {
         console.error("[ROOM] Add error:", err);
@@ -279,36 +307,43 @@ exports.updateRoom = async (req, res) => {
         const ownerId = req.user._id;
 
         const guesthouse = await Guesthouse.findOne({ owner: ownerId });
-        if (!guesthouse) return res.status(403).json({ success: false, message: "No guest House found." });
-
-        const room = await Room.findOne({ _id: roomId, guesthouse: guesthouse._id });
-        if (!room) return res.status(404).json({ success: false, message: "Room not found in this guesthouse" });
-
-        // Update photos if provided
-        if (req.files && req.files.length > 0) {
-            room.photos.forEach(imgPath => {
-                try {
-                    const fullPath = path.join(__dirname, "..", imgPath);
-                    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-                } catch (err) {
-                    console.error("Error deleting old image:", err.message);
-                }
-            });
-            room.photos = req.files.map(file => file.path);
+        if (!guesthouse) {
+            return res.status(403).json({ success: false, message: "No guesthouse found." });
         }
 
-        // Update other fields
+        const room = await Room.findOne({ _id: roomId, guesthouse: guesthouse._id });
+        if (!room) {
+            return res.status(404).json({ success: false, message: "Room not found." });
+        }
+
+        // अगर नई photos upload हुईं
+        if (req.files && req.files.length > 0) {
+            // पुरानी delete करो
+            room.photos.forEach(img => {
+                const oldPath = path.join(__dirname, "..", "uploads", "rooms", img);
+                if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+            });
+
+            // DB में सिर्फ filename save
+            room.photos = req.files.map(f => f.filename);
+        }
+
+        // बाकी fields update
         Object.assign(room, req.body);
 
         await room.save();
 
+        // अब response में full URL भेजो
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const photos = room.photos.map(name => `${BASE_URL}/uploads/rooms/${name}`);
+
         return res.status(200).json({
             success: true,
             message: "Room updated successfully",
-            data: room,
+            data: { ...room.toObject(), photos }
         });
     } catch (err) {
-        console.error("[ROOM] Update error:", err);
+        console.error("Update Room Error:", err);
         return res.status(500).json({ success: false, message: "Server error", error: err.message });
     }
 };
@@ -338,8 +373,8 @@ exports.deleteRoom = async (req, res) => {
 
 exports.getAllBookings = async (req, res) => {
     try {
-        const userId = req.user;
-        const guesthouse = Guesthouse.findOne({ owner: userId });
+        const user = req.user;
+        const guesthouse = Guesthouse.findOne({ owner: user.id });
         const bookings = await Booking.find({ guesthouse: guesthouse._id }).sort({ createdAt: -1 }); // latest first;
         res.status(200).json({
             success: true,
@@ -656,24 +691,39 @@ exports.getNotifications = async (req, res) => {
 
 exports.readNotification = async (req, res) => {
     try {
-        const notificationId = req.params.id;
-        const notification = await Notification.findById(notificationId);
+        const { notificationId } = req.params;
+
+        //  Await जरूरी है
+        const notification = await Notification.findOne({
+            _id: notificationId,
+            user: req.user.id
+        });
+
         if (!notification) {
             return res.status(404).json({
                 success: false,
                 message: "No Notification found."
-            })
+            });
         }
 
-        notification.read = true;
+        //  Mark as read
+        notification.isRead = true;
+        await notification.save();
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Notification marked as read",
             data: notification
         });
+
     } catch (err) {
-        res.status(500).json({ success: false, message: "Error updating notification", error: err.message });
+        console.error("[NOTIFICATION] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error updating notification",
+            error: err.message
+        });
     }
 };
+
 

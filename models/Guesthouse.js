@@ -12,7 +12,7 @@ const guesthouseSchema = new mongoose.Schema({
     }, 
     contactNumber: String,
     description: String,
-    images: { type: [String] },
+    guestHouseImage: { type: [String] }, // guestHouse Image
     status: { type: String, enum: ['active','suspended'], default: 'active' },
     createdAt: { type: Date, default: Date.now }
 });

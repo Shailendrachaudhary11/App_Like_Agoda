@@ -1,40 +1,30 @@
 const express = require('express');
 const router = express.Router();
-const customerController = require('../controller/customerController');
-const auth = require('../middlewares/authMiddleware');
-const uploadUser = require("../middlewares/uploadUser");
-const upload = require('../middlewares/uploadMiddleware')
-const uploadRooms = require('../middlewares/uploadRooms');
+const customerController = require("../controller/customerController")
+const auth = require("../middlewares/authMiddleware")
 
-////////////////////////////====================  CUSTOMER  ===========================////////////////////////
+router.get("/guesthouses", auth(["customer"]), customerController.getAllGuestHouses);
+router.get("/guesthouse/:id", auth(["customer"]), customerController.getGuestHouseById);
+router.get("/guesthouses/nearby",auth(["customer"]),customerController.searchGuestHouseNearBy);
 
-// // guesthouse near by me
-// router.get("/guesthouses/nearby",auth(["customer"]),customerController.searchNearbyRooms);
 
-// // Search by city/date/amenities
-// router.get("/guesthouses/search", auth(["customer"]), customerController.searchGuestHouses);
+router.get("/rooms", auth(["customer"]), customerController.searchRooms); // room filter
+router.get("/rooms/:id", auth(["customer"]), customerController.getRoomById)
 
-// // get room by Id
-// router.get("/room/:id",auth(["customer"]), customerController.getRoomDetails);
+router.post("/reviews", auth(["customer"]), customerController.addReviewAndRating);
+router.get("/reviews", auth(["customer"]), customerController.getAllReviews)
+router.get("/reviews/guesthouse/:id", auth(["customer"]), customerController.getReviewByGuestHouse);
+router.get("/reviews/room/:id", auth(["customer"]), customerController.getReviewByRoom);
 
-// // search room by city, minPrice, maxPrice, cap, inDate, outDate
-// router.get("/rooms/search",auth(["customer"]),customerController.searchRooms);
+router.get("/promos", auth(["customer"]), customerController.getAllPromos);
+router.get("/promos/:id", auth(["customer"]), customerController.getPromoById);
 
-// // Book room
-// router.post("/book-room",auth(["customer"]), customerController.bookroom);
+router.get("/notifications", auth(["customer"]), customerController.getAllNotification);
+router.put("/notifications/:notificationId/read", auth(["customer"]), customerController.readNotification);
 
-// // payment and confirm Booking
-// router.post("/payment/:bookingId",auth(["customer"]),customerController.makePayment)
-
-// // get booking by Id
-// router.get("/booking/:bookingId",auth(["customer"]),customerController.getBookingById);
-
-// // GET customer get all booking 
-// router.get("/allBooking",auth(["customer"]),customerController.getAllBooking);
-
-// router.post("/reviews", auth(["customer"]),customerController.addReviewRating);
-
-// router.get("/guesthouses/:id/reviews", auth(["customer"]), customerController.getAllReviews)
+router.get("/favorites", auth(["customer"]), customerController.getfavorites);
+router.post("/favorites/:id", auth(["customer"]), customerController.addFavorites);
+router.delete("/favorites/:id", auth(["customer"]),customerController.removeFavorite);
 
 
 module.exports = router;
