@@ -1,19 +1,17 @@
 const Guesthouse = require("../models/Guesthouse");
 const Room = require("../models/Room");
-const { checkout } = require("../routes/userRoutes");
 const Booking = require("../models/Booking")
 const sendEmail = require("../utils/sendEmail");
 const Review = require("../models/review")
 const Notification = require("../models/notification")
 const Promo = require("../models/Promo")
 const Favorites = require("../models/Favorite")
+const createNotification = require("../utils/notificationHelper");
 
-
+const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
 exports.getAllGuestHouses = async (req, res) => {
     try {
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-
 
         const guesthouses = await Guesthouse.find({ status: "active" });
 
@@ -54,23 +52,62 @@ exports.getAllGuestHouses = async (req, res) => {
 
 exports.getGuestHouseById = async (req, res) => {
     try {
+        const { id } = req.params;
+
+        const guestHouse = await Guesthouse.findById(id);
+
+        if (!guestHouse) {
+            return res.status(404).json({
+                success: false,
+                statusCode: 404,
+                message: "Guesthouse not found.",
+                data: null
+            });
+        }
+
+
+        const guestHouseObj = guestHouse.toObject();
+
+        if (guestHouseObj.guestHouseImage) {
+            guestHouseObj.guestHouseImage = guestHouseObj.guestHouseImage.map(
+                img => `${BASE_URL}/uploads/guestHouseImage/${img}`
+            );
+        }
+
+        return res.status(200).json({
+            success: true,
+            statusCode: 200,
+            message: "Guesthouse fetched successfully.",
+            data: guestHouseObj
+        });
+
+    } catch (err) {
+        console.error("[ERROR][GuestHouse By ID]:", err.message);
+        return res.status(500).json({
+            success: false,
+            statusCode: 500,
+            message: "Internal server error while fetching guesthouse.",
+            error: err.message
+        });
+    }
+};
+
+exports.searchGuestHouseNearBy = async (req, res) => {
+    try {
         let { lng, lat, distance } = req.query;
 
-        // Convert to numbers
         lng = parseFloat(lng);
         lat = parseFloat(lat);
-        distance = Number(distance);
+        distance = parseInt(distance);
 
-        // Validate inputs
         if (isNaN(lng) || isNaN(lat) || isNaN(distance)) {
             return res.status(400).json({
                 success: false,
                 statusCode: 400,
-                message: "Invalid or missing query parameters. Please provide valid lng, lat, and distance."
+                message: "Invalid query parameters. Provide valid lng, lat, and distance."
             });
         }
 
-        // Find guesthouses near the provided location
         const guestHouses = await Guesthouse.find({
             status: "active",
             location: {
@@ -83,7 +120,7 @@ exports.getGuestHouseById = async (req, res) => {
 
         if (!guestHouses || guestHouses.length === 0) {
             return res.status(404).json({
-                success: true,
+                success: false,
                 statusCode: 404,
                 NoOfGuestHouse: 0,
                 message: "No guesthouses found nearby.",
@@ -91,16 +128,26 @@ exports.getGuestHouseById = async (req, res) => {
             });
         }
 
+
+        // Add full URLs for guestHouseImage
+        const guestHousesWithUrls = guestHouses.map(gh => {
+            const obj = gh.toObject();
+            if (obj.guestHouseImage) {
+                obj.guestHouseImage = obj.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
+            }
+            return obj;
+        });
+
         return res.status(200).json({
             success: true,
             statusCode: 200,
-            NoOfGuestHouse: guestHouses.length,
-            message: "Guesthouses fetched successfully.",
-            data: guestHouses
+            NoOfGuestHouse: guestHousesWithUrls.length,
+            message: "Successfully fetched guesthouses near you.",
+            data: guestHousesWithUrls
         });
 
     } catch (err) {
-        console.error("[ERROR][Nearby Guesthouses]:", err.message);
+        console.error("[GuestHouse Nearby] Error:", err);
         return res.status(500).json({
             success: false,
             statusCode: 500,
@@ -109,56 +156,6 @@ exports.getGuestHouseById = async (req, res) => {
         });
     }
 };
-
-exports.searchGuestHouseNearBy = async (req, res) => {
-    try {
-        const { lng, lat, distance } = req.query;
-
-        // Validate query parameters
-        if (isNaN(lng) || isNaN(lat) || isNaN(distance)) {
-            return res.status(400).json({
-                success: false,
-                statusCode: 400,
-                message: "Invalid or missing query parameters. Please provide valid lng, lat, and distance."
-            });
-        }
-
-        // Find guesthouses near the provided location
-        const guestHouses = await Guesthouse.find({
-            status: "active",
-            location: {
-                $near: {
-                    $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
-                    $maxDistance: parseInt(distance)
-                }
-            }
-        });
-
-        if (guestHouses === 0) {
-            return res.status(404).json({
-                success: true,
-                NoOfGuestHouse: guestHouses.length,
-                message: "NO guesthouses found near by you.",
-                data: []
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            NoOfGuestHouse: guestHouses.length,
-            message: "Successfully fetch guesthouses near by you.",
-            data: guestHouses
-        });
-    } catch (err) {
-        console.error("Error searching nearby rooms:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while searching guesthouses.",
-            error: err.message
-        });
-    }
-};
-
 
 exports.getRoomById = async (req, res) => {
     try {
@@ -201,27 +198,16 @@ exports.getRoomById = async (req, res) => {
 
 exports.searchRooms = async (req, res) => {
     try {
-        const { city, startDate, endDate, guests } = req.query;
+        const { city, startDate, endDate, capacity, minPrice, maxPrice, amenities, sort: sortQuery } = req.query;
 
         let filter = {};
 
-        if (guests) {
-            filter.capacity = { $gte: Number(guests) };
+        // Capacity filter
+        if (capacity) {
+            filter.capacity = { $gte: Number(capacity) };
         }
 
-        if (startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-
-            filter.availability = {
-                $elemMatch: {
-                    startDate: { $lte: start },
-                    endDate: { $gte: end },
-                    isAvailable: true
-                }
-            };
-        }
-
+        // City filter
         if (city) {
             const guesthouses = await Guesthouse.find({
                 city: { $regex: city, $options: 'i' }
@@ -230,12 +216,67 @@ exports.searchRooms = async (req, res) => {
             filter.guesthouse = { $in: guesthouses.map(g => g._id) };
         }
 
+        // Price filter
+        if (minPrice || maxPrice) {
+            filter.pricePerNight = {};
+            if (minPrice) filter.pricePerNight.$gte = Number(minPrice);
+            if (maxPrice) filter.pricePerNight.$lte = Number(maxPrice);
+        }
+
+        // Amenities filter (all amenities must match)
+        if (amenities) {
+            let amenitiesArray = amenities.split(",").map(a => a.trim());
+
+            filter.amenities = {
+                $all: amenitiesArray.map(a => new RegExp(`^${a}$`, "i"))
+            };
+        }
+
+        // Sorting logic
+        let sort = {};
+        if (sortQuery) {
+            if (req.query.sort === "lowest") {
+                sort.pricePerNight = 1;
+            } else if (req.query.sort === "highest") {
+                sort.pricePerNight = -1;
+            }
+        } else {
+            sort.createdAt = -1;
+        }
+
         const BASE_URL = process.env.BASE_URL || `http://192.168.1.33:${process.env.PORT || 5000}`;
 
-        // Populate guesthouse and get plain objects
+        // Fetch rooms
         let rooms = await Room.find(filter)
-            .populate('guesthouse', 'name city address') // select fields you want
+            .populate('guesthouse', 'name city address')
+            .sort(sort)
             .lean();
+
+        // Extra filter: Check availability overlap
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+
+            rooms = rooms.filter(room => {
+                if (!room.availability || room.availability.length === 0) return true;
+
+                for (let slot of room.availability) {
+                    if (!slot.isAvailable) {
+                        const slotStart = new Date(slot.startDate);
+                        const slotEnd = new Date(slot.endDate);
+
+                        // Agar date ranges overlap karte hain
+                        const isOverlap = (start < slotEnd && end > slotStart);
+
+                        if (isOverlap) {
+                            return false; // booked hai, room reject
+                        }
+                    }
+                }
+                return true; // koi overlap nahi mila, room allow
+            });
+
+        }
 
         // Update photos with full URLs
         rooms = rooms.map(room => {
@@ -245,7 +286,6 @@ exports.searchRooms = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            GuestHouseName: rooms[0]?.guesthouse?.name || "",
             NoOfRooms: rooms.length,
             message: "Rooms fetched successfully",
             data: rooms
@@ -260,7 +300,6 @@ exports.searchRooms = async (req, res) => {
         });
     }
 };
-
 
 exports.addReviewAndRating = async (req, res) => {
     try {
@@ -287,13 +326,6 @@ exports.addReviewAndRating = async (req, res) => {
         const user = req.user; // middleware se aata h
         const customerId = user.id;
 
-        const alreadyReview = await Review.findOne({ guesthouse: guestHouseId, room: roomId, customer: user.id })
-        if (alreadyReview) {
-            return res.status(404).json({
-                success: false,
-                message: "You already add rating."
-            });
-        }
         // Review object create
         const review = new Review({
             guesthouse: guestHouseId,
@@ -523,11 +555,14 @@ exports.getPromoById = async (req, res) => {
 
 exports.getAllNotification = async (req, res) => {
     try {
-        const userId = req.user.id;
+        const customerId = req.user.id;
 
         // Fetch notifications, latest first
-        const notifications = await Notification.find({ user: userId })
-            .sort({ createdAt: -1 })
+        const notifications = await Notification.find({
+            "receiver.userId": customerId,
+            "receiver.role": "customer",
+        })
+            .sort({ createdAt: -1 }) // latest first
             .lean();
 
         if (!notifications || notifications.length === 0) {
@@ -562,11 +597,12 @@ exports.getAllNotification = async (req, res) => {
 exports.readNotification = async (req, res) => {
     try {
         const { notificationId } = req.params;
+        const customerId = req.user.id;
 
         //  Await जरूरी है
         const notification = await Notification.findOne({
             _id: notificationId,
-            user: req.user.id
+            "receiver.userId": customerId,
         });
 
         if (!notification) {
@@ -596,10 +632,46 @@ exports.readNotification = async (req, res) => {
     }
 };
 
+exports.deleteNotification = async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const customerId = req.user.id;
+
+        //  Await जरूरी है
+        const notification = await Notification.findOne({
+            _id: notificationId,
+            "receiver.userId": customerId,
+        });
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: "No Notification found."
+            });
+        }
+
+        await notification.deleteOne();
+
+        return res.status(200).json({
+            success: true,
+            message: "Notification successfully deleted.",
+            notification: notificationId
+        });
+
+    } catch (err) {
+        console.error("[NOTIFICATION] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error deleteing notification",
+            error: err.message
+        });
+    }
+};
+
 exports.getfavorites = async (req, res) => {
     try {
         const customerId = req.user.id;
-        const favorites = await Favorites.find({ customer: customerId }).populate("guesthouse", "name");;
+        const favorites = await Favorites.find({ customer: customerId }).populate("room", "roomNumber guesthouse");
         if (!favorites || favorites.length === 0) {
             res.status(200).json({
                 success: true,
@@ -609,7 +681,7 @@ exports.getfavorites = async (req, res) => {
         }
         return res.status(200).json({
             success: true,
-            message: "Favorite guesthouses fetched successfully.",
+            message: "Favorite rooms fetched successfully.",
             count: favorites.length,
             data: favorites,
         });
@@ -626,52 +698,52 @@ exports.getfavorites = async (req, res) => {
 
 exports.addFavorites = async (req, res) => {
     try {
-        const guesthouseId = req.params.id; // get from URL params
+        const roomId = req.params.id; // get from URL params
         const userId = req.user.id;
 
-        if (!guesthouseId) {
+        if (!roomId) {
             return res.status(400).json({
                 success: false,
-                message: "Guesthouse ID is required.",
+                message: "room ID is required.",
             });
         }
 
         // Optional: check if guesthouse exists
-        const guesthouse = await Guesthouse.findById(guesthouseId);
-        if (!guesthouse) {
+        const room = await Room.findById(roomId);
+        if (!room) {
             return res.status(404).json({
                 success: false,
-                message: "Guesthouse not found.",
+                message: "room not found.",
             });
         }
 
         // Check if already favorited
-        const existingFavorite = await Favorites.findOne({ customer: userId, guesthouse: guesthouseId });
+        const existingFavorite = await Favorites.findOne({ customer: userId, room: roomId });
         if (existingFavorite) {
             return res.status(400).json({
                 success: false,
-                message: "Guesthouse is already in favorites.",
+                message: "room is already in favorites.",
             });
         }
 
         // Add to favorites
         const favorite = new Favorites({
             customer: userId,
-            guesthouse: guesthouseId,
+            room: roomId,
         });
         await favorite.save();
 
         return res.status(201).json({
             success: true,
-            message: "Guesthouse added to favorites successfully.",
+            message: `room ${roomId} successfully added to favorites.`,
             data: favorite,
         });
 
     } catch (error) {
-        console.error("Error adding guesthouse to favorites:", error);
+        console.error("Error adding room to favorites:", error);
         return res.status(500).json({
             success: false,
-            message: "Failed to add guesthouse to favorites.",
+            message: "Failed to add room to favorites.",
             error: error.message,
         });
     }
@@ -679,39 +751,518 @@ exports.addFavorites = async (req, res) => {
 
 exports.removeFavorite = async (req, res) => {
     try {
-        const guesthouseId = req.params.id;   // Guesthouse ID from URL
-        const customerId = req.user.id;       // Logged-in customer
+        const { id } = req.params;
+        const customerId = req.user.id;
 
-        if (!guesthouseId) {
+        if (!id) {
             return res.status(400).json({
                 success: false,
-                message: "Guesthouse ID is required.",
+                message: "ID is required.",
             });
         }
 
-        // Check if this favorite exists
-        const favorite = await Favorites.findOne({ customer: customerId, guesthouse: guesthouseId });
+        const favorite = await Favorites.findOne({ customer: customerId, _id: id });
+
         if (!favorite) {
             return res.status(404).json({
                 success: false,
-                message: "Guesthouse is not in your favorites.",
+                message: "no favorite found.",
             });
         }
 
-        // Remove it
-        await Favorites.deleteOne({ _id: favorite._id });
+        await favorite.deleteOne({ _id: id });
 
         return res.status(200).json({
             success: true,
-            message: "Guesthouse removed from favorites successfully.",
+            message: "romove from favorites successfully.",
         });
 
     } catch (error) {
-        console.error("Error removing guesthouse from favorites:", error);
+        console.error("Error removing from favorites:", error);
         return res.status(500).json({
             success: false,
-            message: "Failed to remove guesthouse from favorites.",
+            message: "Failed to remove from favorites.",
             error: error.message,
+        });
+    }
+};
+
+// ---------------------------------- Booking part --------------------------------------
+
+exports.createBooking = async (req, res) => {
+    try {
+        const { guesthouseId, roomId, checkIn, checkOut, promoCode } = req.body;
+
+        const customerId = req.user.id;
+        console.log(req.user)
+        // validate input
+        if (!guesthouseId || !roomId || !checkIn || !checkOut) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields: guesthouseId, roomId, customerId, checkIn, checkOut"
+            });
+        }
+
+        const checkInDate = new Date(checkIn);
+        const checkOutDate = new Date(checkOut);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // ignore time part for comparison
+
+        //  Check if check-in is today or in the future
+        if (checkInDate < today) {
+            return res.status(400).json({
+                success: false,
+                message: "Check-in date cannot be in the past."
+            });
+        }
+
+        if (checkInDate >= checkOutDate) {
+            return res.status(400).json({
+                success: false,
+                message: "Check-out date must be later than check-in date"
+            });
+        }
+
+        // guesthouse check
+        const guesthouse = await Guesthouse.findById(guesthouseId);
+        if (!guesthouse) {
+            return res.status(404).json({
+                success: false,
+                message: "Guesthouse not found."
+            });
+        }
+
+        // room check
+        const room = await Room.findOne({ _id: roomId, guesthouse: guesthouseId });
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: "Room not found for this guesthouse."
+            });
+        }
+
+        // check overlapping bookings for this room
+        const overlapBooking = await Booking.findOne({
+            room: roomId,
+            status: { $in: ["pending", "confirmed"] }, // active bookings only
+            $or: [
+                {
+                    checkIn: { $lte: new Date(checkOut) },
+                    checkOut: { $gte: new Date(checkIn) }
+                }
+            ]
+        });
+
+        if (overlapBooking) {
+            return res.status(400).json({
+                success: false,
+                message: "Room is not available for the selected dates."
+            });
+        }
+
+        const nights = Math.ceil((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24));
+        const amount = nights * room.pricePerNight;
+
+
+        // let appliedPromo = null;
+        // if (promoCode) {
+        //     const promo = await Promo.findOne({ code: promoCode, isActive: true });
+        //     if (!promo) {
+        //         return res.status(404).json({
+        //             suucess: false,
+        //             message: "No promo code found"
+        //         })
+        //     }
+        //     else {
+        //         const promoStart = new Date(promo.startDate);
+        //         const promoEnd = new Date(promo.endDate);
+
+        //         if (checkInDate >= promoStart && checkOutDate <= promoEnd) {
+        //             if (promo.discountType === "flat") {
+        //                 amount -= promo.discountValue;
+        //             } else if (promo.discountType === "percentage") {
+        //                 amount -= (amount * promo.discountValue) / 100;
+        //             }
+        //             if (amount < 0) amount = 0;
+        //             appliedPromo = promo.code;
+        //         }
+        //     }
+        // }
+
+        // create booking
+
+        const booking = new Booking({
+            customer: customerId,
+            guesthouse: guesthouseId,
+            room: roomId,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            nights,
+            amount
+        });
+
+        await booking.save();
+
+        // Optional: maintain availability array in Room schema
+        room.availability.push({ startDate: booking.checkIn, endDate: booking.checkOut, isAvailable: false });
+        await room.save();
+
+        await createNotification(
+            { userId: guesthouseId, role: "guesthouse" }, // sender = guesthouse admin
+            { userId: customerId, role: "customer" },        // receiver = customer
+            "Booking Created",
+            `Your booking at ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Please complete your payment to confirm your booking.`,
+            "payment",
+            { bookingId: booking._id, guesthouseId: guesthouseId, roomId: roomId }
+        );
+
+
+        return res.status(201).json({
+            success: true,
+            message: "Booking created successfully. plz complete your payment to confirm booking.",
+            data: booking
+        });
+
+    } catch (error) {
+        console.error("Error creating booking:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while creating booking",
+            error: error.message
+        });
+    }
+};
+
+exports.payPayment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const customerId = req.user.id;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing bookingId"
+            });
+        }
+
+        // Fetch booking by ID
+        const booking = await Booking.findOne({ _id: id, customer: customerId });
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: `Booking with ID ${id} not found.`
+            });
+        }
+
+        // Only allow payment if status is pending
+        if (booking.status !== "pending") {
+            return res.status(400).json({
+                success: false,
+                message: `Booking status is "${booking.status}", payment not allowed.`
+            });
+        }
+
+        // Optional: verify payment with payment gateway here
+
+        // Update payment status
+        booking.paymentStatus = "paid";
+        booking.status = "confirmed"; // confirm booking after payment
+        booking.reason = booking.reason || "Payment completed";
+
+        await booking.save();
+
+        const guesthouse = await Guesthouse.findById(booking.guesthouse);
+
+        const guesthouseId = guesthouse._id;
+
+        await createNotification(
+            { userId: guesthouseId, role: "guesthouse" }, // sender
+            { userId: customerId, role: "customer" },        // receiver
+            "Payment Successful",                            // title
+            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been confirmed.`, // message
+            "payment",                                       // type
+            {
+                bookingId: booking._id,
+                guesthouseId: guesthouse._id,
+                roomId: booking.room, // assuming booking.room exists
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: `Payment successful for booking ${id}`,
+            data: booking
+        });
+
+    } catch (error) {
+        console.error("Error processing payment:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error while processing payment",
+            error: error.message
+        });
+    }
+};
+
+exports.allBooking = async (req, res) => {
+    try {
+
+        const customerId = req.user.id;
+        console.log(customerId)
+        // Get all bookings of customer - latest first
+        const bookings = await Booking.find({ customer: customerId })
+            .sort({ createdAt: -1 }); // -1 means descending (latest first)
+
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetch your bookings.",
+            count: bookings.length,
+            data: bookings
+        })
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "error to fetch all bookings.",
+            error: error
+        })
+    }
+}
+
+exports.getBooking = async (req, res) => {
+    try {
+        const { id } = req.params; // extract booking id from URL params
+
+        const booking = await Booking.findById(id);
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking not found."
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetched your booking.",
+            data: booking
+        });
+    } catch (error) {
+        console.error("Error fetching booking:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching booking.",
+            error: error.message
+        });
+    }
+};
+
+exports.cancelBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const customerId = req.user.id;
+
+        // Fetch the booking
+        const booking = await Booking.findOne({ _id: id, customer: customerId });
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: `Booking with ID ${id} not found.`
+            });
+        }
+
+        // Only allow cancel if status is pending or confirmed
+        if (!["pending", "confirmed"].includes(booking.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot cancel booking. Current status is "${booking.status}".`
+            });
+        }
+
+        // Update booking status
+        booking.status = "cancelled";
+
+        // Handle payment refund status
+        if (booking.paymentStatus === "paid") {
+            booking.paymentStatus = "refunded";
+            booking.reason = "Cancelled by customer after payment";
+            // Optional: trigger actual refund here with payment gateway
+        } else {
+            booking.reason = "Cancelled by customer";
+        }
+
+        await booking.save();
+
+        // Find the room related to this booking
+        const room = await Room.findById(booking.room);
+
+        if (room && room.availability) {
+            room.availability = room.availability.filter(slot => {
+                const slotStart = new Date(slot.startDate).getTime();
+                const slotEnd = new Date(slot.endDate).getTime();
+                const bookingStart = new Date(booking.checkIn).getTime();
+                const bookingEnd = new Date(booking.checkOut).getTime();
+
+                // delete slot only if matches the cancelled booking
+                return !(slotStart === bookingStart && slotEnd === bookingEnd && slot.isAvailable === false);
+            });
+
+            await room.save();
+        }
+
+        const guesthouse = await Guesthouse.findById(booking.guesthouse);
+        const guesthouseId = guesthouse._id;
+        await createNotification(
+            { userId: guesthouseId, role: "guesthouse" }, // sender
+            { userId: customerId, role: "customer" },        // receiver
+            "Cancel Booking",                            // title
+            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been cancel. Amount ${booking.amount} will be refuded.`, // message
+            "booking",                                       // type
+            {
+                bookingId: booking._id,
+                guesthouseId: guesthouse._id,
+                roomId: booking.room, // assuming booking.room exists
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: `Booking with ID ${id} has been successfully cancelled.`,
+            data: booking
+        });
+
+    } catch (error) {
+        console.error("Error cancelling booking:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error while cancelling booking.",
+            error: error.message
+        });
+    }
+};
+
+exports.pastBooking = async (req, res) => {
+    try {
+        const customerId = req.user.id; // user from auth middleware
+        if (!customerId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized. Please login."
+            });
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const pastBookings = await Booking.find({
+            customer: customerId,
+            checkOut: { $lt: today }
+        }).sort({ checkOut: -1 }); // latest past bookings first
+
+        if (pastBookings.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No past bookings found."
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            count: pastBookings.length,
+            message: "Past bookings fetched successfully.",
+            data: pastBookings
+        });
+    } catch (error) {
+        console.error("Error fetching past bookings:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching past bookings.",
+            error: error.message
+        });
+    }
+};
+
+exports.upcomingBooking = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+        if (!customerId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized. Please login."
+            });
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // din ka start time fix kar diya
+
+        const bookings = await Booking.find({
+            customer: customerId,
+            checkIn: { $gte: today },  // sirf future ya aaj ki bookings
+            status: { $in: ["pending", "confirmed"] } // active bookings only
+        })
+            .sort({ checkIn: 1 }) // sabse najdik wali trip pehle
+
+        if (!bookings || bookings.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No upcoming bookings found."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Upcoming bookings fetched successfully.",
+            count: bookings.length,
+            data: bookings
+        });
+
+    } catch (error) {
+        console.error("Error fetching upcoming bookings:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching upcoming trips.",
+            error: error.message
+        });
+    }
+};
+
+exports.getCancelBookings = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+
+        if (!customerId) {
+            return res.status(400).json({
+                success: false,
+                message: "Customer ID is required."
+            });
+        }
+
+        const bookings = await Booking.find({ customer: customerId, status: "cancelled" });
+
+        if (!bookings || bookings.length === 0) {
+            return res.status(200).json({
+                success: true,
+                count: 0,
+                message: "No cancelled bookings found.",
+                data: []
+            });
+        }
+
+        //  Return cancelled bookings
+        return res.status(200).json({
+            success: true,
+            count: bookings.length,
+            message: "Cancelled bookings fetched successfully.",
+            data: bookings
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching cancelled bookings.",
+            error: error.message
         });
     }
 };
@@ -720,418 +1271,3 @@ exports.removeFavorite = async (req, res) => {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// //  Get details of a specific room
-// exports.getRoomDetails = async (req, res) => {
-//     try {
-//         const { id } = req.params;
-
-//         const room = await Room.findById(id).populate("guesthouse", "name location");
-
-//         if (!room) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "Room not found"
-//             });
-//         }
-
-//         return res.status(200).json({
-//             success: true,
-//             message: "Room details fetched successfully",
-//             data: room
-//         });
-//     } catch (err) {
-//         console.error("Error getting room details:", err);
-//         return res.status(500).json({
-//             success: false,
-//             message: "Server error",
-//             error: err.message
-//         });
-//     }
-// };
-
-// //  Search guesthouses by city or name
-// exports.searchGuestHouses = async (req, res) => {
-//     try {
-//         const { name, address, city, state } = req.query;
-
-//         let filter = { status: "approved" };
-
-//         if (name) filter.name = new RegExp(name, "i"); // Case-insensitive search
-//         if (address) filter.address = new RegExp(address, "i");
-//         if (city) filter.city = new RegExp(city, "i"); // Case-insensitive search
-//         if (state) filter.state = new RegExp(state, "i");
-
-//         const guestHouses = await Guesthouse.find(filter);
-
-//         return res.status(200).json({
-//             success: true,
-//             totalGuestHouses: guestHouses.length,
-//             message: "Guest Houses fetched successfully",
-//             data: guestHouses
-//         });
-//     } catch (err) {
-//         console.error("Error searching rooms:", err);
-//         return res.status(500).json({
-//             success: false,
-//             message: "Server error",
-//             error: err.message
-//         });
-//     }
-// };
-
-// // search room by city, minPrice, maxPrice, cap, inDate, outDate
-// exports.searchRooms = async (req, res) => {
-//     try {
-//         const { city, minPrice, maxPrice, amenities, capacity, checkIn, checkOut } = req.query;
-
-//         // Guesthouse filter (only approved)
-//         let guesthouseFilter = { status: "approved" };
-//         if (city) {
-//             guesthouseFilter.city = { $regex: new RegExp(city, "i") };
-//         }
-
-//         const guesthouses = await Guesthouse.find(guesthouseFilter);
-//         if (guesthouses.length === 0) {
-//             return res.status(200).json({
-//                 success: true,
-//                 message: "No guesthouses found for given filters.",
-//                 NoOfRooms: 0,
-//                 data: []
-//             });
-//         }
-
-//         // Room filter
-//         let roomFilter = {
-//             guesthouse: { $in: guesthouses.map(g => g._id) },
-//             pricePerNight: { $gte: Number(minPrice) || 0, $lte: Number(maxPrice) || 100000 }
-//         };
-
-//         if (capacity) roomFilter.capacity = { $gte: Number(capacity) };
-
-//         if (amenities) {
-//             roomFilter.amenities = { $all: amenities.split(",") };
-//         }
-
-//         // Availability filter
-//         if (checkIn) {
-//             const checkInDate = new Date(checkIn);
-//             const checkOutDate = checkOut ? new Date(checkOut) : new Date(checkIn);
-
-//             roomFilter.availability = {
-//                 $not: {
-//                     $elemMatch: {
-//                         startDate: { $lte: checkOutDate },
-//                         endDate: { $gte: checkInDate },
-//                         isAvailable: false
-//                     }
-//                 }
-//             };
-//         }
-
-//         const rooms = await Room.find(roomFilter).populate("guesthouse");
-
-//         return res.status(200).json({
-//             success: true,
-//             message: "Rooms fetched successfully.",
-//             NoOfRooms: rooms.length,
-//             data: rooms
-//         });
-
-//     } catch (err) {
-//         console.error("Error in searchRooms:", err);
-//         return res.status(500).json({
-//             success: false,
-//             error: "Search failed"
-//         });
-//     }
-// };
-
-
-// // POST book room
-// exports.bookroom = async (req, res) => {
-//     try {
-//         const { roomId, checkIn, checkOut, promoCode } = req.body;
-
-//         if (!roomId || !checkIn || !checkOut) {
-//             return res.status(400).json({ success: false, message: "Invalid credentials" });
-//         }
-
-//         const user = req.user;
-//         const room = await Room.findById(roomId);
-//         if (!room) {
-//             return res.status(404).json({ success: false, message: "Room not found" });
-//         }
-
-//         // Check overlapping confirmed bookings
-//         const overlappingBooking = await Booking.findOne({
-//             room: roomId,
-//             status: "confirmed",
-//             $or: [
-//                 { checkIn: { $lt: new Date(checkOut), $gte: new Date(checkIn) } },
-//                 { checkOut: { $lte: new Date(checkOut), $gt: new Date(checkIn) } },
-//                 { checkIn: { $lte: new Date(checkIn) }, checkOut: { $gte: new Date(checkOut) } }
-//             ]
-//         });
-
-//         if (overlappingBooking) {
-//             return res.status(400).json({ success: false, message: "Room is already booked for these dates." });
-//         }
-
-//         const nights = Math.ceil((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24));
-//         const amount = nights * room.pricePerNight;
-
-//         const booking = await Booking.create({
-//             customer: user.id,
-//             guesthouse: room.guesthouse._id,
-//             room: roomId,
-//             checkIn,
-//             checkOut,
-//             nights,
-//             amount,
-//             status: "pending"
-//         });
-
-//         // ✅ Email को अलग try/catch में रखो
-//         try {
-//             await sendEmail(
-//                 user.email,
-//                 "Payment Pending",
-//                 `Your amount is ${booking.amount}. Please complete your payment to confirm your booking.`
-//             );
-//         } catch (emailErr) {
-//             console.error("Email sending failed:", emailErr.message);
-//         }
-
-//         // ✅ Response हमेशा success होना चाहिए
-//         return res.status(201).json({
-//             success: true,
-//             message: "Booking created! Please complete payment to confirm your booking.",
-//             booking
-//         });
-
-//     } catch (error) {
-//         console.error("Booking error:", error);
-//         return res.status(500).json({ success: false, message: "Error booking room" });
-//     }
-// };
-
-
-// // payment done makePayment
-// exports.makePayment = async (req, res) => {
-//     try {
-//         const { bookingId } = req.params;
-
-//         // Booking + populate customer, guesthouse, room
-//         const booking = await Booking.findById(bookingId)
-//             .populate("customer", "name email")
-//             .populate("guesthouse", "name location")
-//             .populate("room", "roomNumber roomType");
-
-//         if (!booking) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "No Booking found."
-//             });
-//         }
-
-//         if (booking.status === "confirmed") {
-//             return res.status(200).json({
-//                 success: true,
-//                 message: "Your payment is already done."
-//             });
-//         }
-
-//         //  Update status
-//         booking.status = "confirmed";
-//         await booking.save();
-
-//         //  Update room availability
-//         await Room.findByIdAndUpdate(booking.room._id, {
-//             $push: {
-//                 availability: {
-//                     startDate: new Date(booking.checkIn),
-//                     endDate: new Date(booking.checkOut),
-//                     isAvailable: false
-//                 }
-//             }
-//         });
-
-//         //  Email content
-//         const emailContent = `
-// Hello ${booking.customer.name},
-
-// ✅ Your booking is confirmed!
-
-// 🏨 Guesthouse: ${booking.guesthouse.name}, ${booking.guesthouse.location}
-// 🛏️ Room: ${booking.room.roomType || booking.room.roomNumber}
-// 📅 Check-in: ${new Date(booking.checkIn).toDateString()}
-// 📅 Check-out: ${new Date(booking.checkOut).toDateString()}
-// 💰 Amount Paid: ₹${booking.amount}
-// 📌 Status: ${booking.status}
-
-// Thank you for booking with us!
-//         `;
-
-//         //  Send email
-//         try {
-//             await sendEmail(booking.customer.email, "Booking Confirmation", emailContent);
-//             console.log("📧 Email sent to:", booking.customer.email);
-//         } catch (mailErr) {
-//             console.error("❌ Email sending failed:", mailErr.message);
-//         }
-
-//         return res.status(200).json({
-//             success: true,
-//             amount: booking.amount,
-//             message: "Your payment is done and booking is confirmed."
-//         });
-
-//     } catch (err) {
-//         console.error("Payment error:", err.message);
-//         res.status(500).json({
-//             success: false,
-//             message: "Error processing payment."
-//         });
-//     }
-// };
-
-// // get Booking BY <ID>
-// exports.getBookingById = async (req, res) => {
-//     try {
-//         const { bookingId } = req.params; // 👈 yahan destructure karo
-//         const booking = await Booking.findById(bookingId);
-
-//         if (!booking) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "Booking not found."
-//             });
-//         }
-
-//         res.status(200).json({
-//             success: true,
-//             message: "Your booking details:",
-//             booking
-//         });
-//     } catch (err) {
-//         console.error("Error fetching booking:", err.message);
-//         res.status(500).json({
-//             success: false,
-//             message: "Error fetching booking details."
-//         });
-//     }
-// };
-
-// // getAllBooking
-// exports.getAllBooking = async (req, res) => {
-//     try {
-//         const user = req.user;
-//         const customerId = user.id;
-//         const booking = await Booking.find({ customer: customerId }).populate({ path: "guesthouse", select: "name location" });
-
-//         res.status(200).json({
-//             success: true,
-//             NoOfBookings: booking.length,
-//             message: "Your Bookings: ",
-//             bookings: booking
-//         })
-//     } catch (error) {
-//         res.status(500).json({
-//             success: false,
-//             message: "Error to get booking."
-//         });
-//     }
-// }
-
-
-// exports.addReviewRating = async (req, res) => {
-//     try {
-//         const { guestHouseId, bookingId, roomNoId, rating, comment } = req.body;
-
-//         //  Guesthouse check
-//         const guestHouse = await Guesthouse.findById(guestHouseId);
-//         if (!guestHouse) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "No GuestHouse found."
-//             });
-//         }
-
-//         //  User info from JWT
-//         const user = req.user; // middleware se aata h
-//         const customerId = user.id;
-
-//         const alreadyReview = await Review.findOne({guesthouse:guestHouseId, room:roomNoId, booking:bookingId, customer:user.id})
-//         if(alreadyReview){
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "You already add rating."
-//             });
-//         }
-//         // Review object create
-//         const review = new Review({
-//             guesthouse: guestHouseId,
-//             room: roomNoId,
-//             customer: customerId,
-//             booking: bookingId,
-//             rating,
-//             comment
-//         });
-
-//         //  Save review
-//         await review.save();
-
-//         return res.status(201).json({
-//             success: true,
-//             message: "Review added successfully",
-//             review
-//         });
-
-//     } catch (err) {
-//         console.error("Add Review Error:", err);
-//         res.status(500).json({
-//             success: false,
-//             message: "Server error",
-//             error: err.message
-//         });
-//     }
-// };
-
-// // Get all reviews by Guesthouse ID
-// exports.getAllReviews = async (req, res) => {
-//     try {
-//         const { id } = req.params; // guesthouseId from route
-
-//         const reviews = await Review.find({ guesthouse: id })
-//             .sort({ createdAt: -1 }); // latest first
-
-//         return res.status(200).json({
-//             success: true,
-//             count: reviews.length,
-//             data: reviews
-//         });
-//     } catch (err) {
-//         console.error("Get All Reviews Error:", err);
-//         return res.status(500).json({
-//             success: false,
-//             message: "Error fetching reviews list.",
-//             error: err.message
-//         });
-//     }
-// };

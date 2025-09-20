@@ -7,99 +7,100 @@ const Review = require("../models/review")
 const Notification = require("../models/notification");
 const { createNotification } = require("../utils/notificationHelper");
 
+const baseUrl = process.env.BASE_URL;
 
 exports.manageGuestHouse = async (req, res) => {
-  try {
-    const ownerId = req.user._id;
-    const { name, address, city, state, location, contactNumber, description } = req.body;
+    try {
+        const ownerId = req.user._id;
+        const { name, address, city, state, location, contactNumber, description } = req.body;
 
-    console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
+        console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
 
-    // Validate images
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "At least 1 image is required",
-      });
-    }
+        // Validate images
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least 1 image is required",
+            });
+        }
 
-    // Save only filenames
-    const images = req.files.map((file) => file.filename);
+        // Save only filenames
+        const images = req.files.map(file => file.filename);
 
-    // BASE_URL for frontend
-    const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-    const imagesWithUrl = images.map((name) => `${BASE_URL}/uploads/guestHouseImage/${name}`);
+        // BASE_URL for frontend
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const imagesWithUrl = images.map(name => `${BASE_URL}/uploads/guestHouseImage/${name}`);
 
-    // Check if guesthouse already exists for this owner
-    let guesthouse = await Guesthouse.findOne({ owner: ownerId });
+        // Check if guesthouse already exists for this owner
+        let guesthouse = await Guesthouse.findOne({ owner: ownerId });
 
-    if (guesthouse) {
-      // Update existing guesthouse
-      guesthouse.name = name || guesthouse.name;
-      guesthouse.address = address || guesthouse.address;
-      guesthouse.city = city || guesthouse.city;
-      guesthouse.state = state || guesthouse.state;
-      guesthouse.location = location || guesthouse.location;
-      guesthouse.contactNumber = contactNumber || guesthouse.contactNumber;
-      guesthouse.description = description || guesthouse.description;
-      
-      // Merge old images with new uploads
-      guesthouse.guestHouseImage = images.length > 0 ? images : guesthouse.guestHouseImage;
+        if (guesthouse) {
+            // Update existing guesthouse
+            guesthouse.name = name || guesthouse.name;
+            guesthouse.address = address || guesthouse.address;
+            guesthouse.city = city || guesthouse.city;
+            guesthouse.state = state || guesthouse.state;
+            guesthouse.location = location || guesthouse.location;
+            guesthouse.contactNumber = contactNumber || guesthouse.contactNumber;
+            guesthouse.description = description || guesthouse.description;
 
-      await guesthouse.save();
+            // Merge old images with new uploads
+            guesthouse.guestHouseImage = images.length > 0 ? images : guesthouse.guestHouseImage;
 
-      return res.status(200).json({
-        success: true,
-        message: "Guesthouse updated successfully.",
-        data: {
-          guesthouseId: guesthouse._id,
-          status: guesthouse.status,
-          guestHouseImage: imagesWithUrl, // frontend friendly URLs
-        },
-      });
-    } else {
-      // Check for duplicate name
-      const duplicate = await Guesthouse.findOne({ name });
-      if (duplicate) {
-        return res.status(400).json({
-          success: false,
-          message: "Guesthouse name must be unique",
+            await guesthouse.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "Guesthouse updated successfully.",
+                data: {
+                    guesthouseId: guesthouse._id,
+                    status: guesthouse.status,
+                    guestHouseImage: imagesWithUrl, // frontend friendly URLs
+                },
+            });
+        } else {
+            // Check for duplicate name
+            const duplicate = await Guesthouse.findOne({ name });
+            if (duplicate) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Guesthouse name must be unique",
+                });
+            }
+
+            // Create new guesthouse
+            guesthouse = new Guesthouse({
+                owner: ownerId,
+                name,
+                address,
+                city,
+                state,
+                location,
+                contactNumber,
+                description,
+                guestHouseImage: images, // corrected field name
+            });
+
+            await guesthouse.save();
+
+            return res.status(201).json({
+                success: true,
+                message: "Guesthouse submitted successfully.",
+                data: {
+                    guesthouseId: guesthouse._id,
+                    status: guesthouse.status,
+                    guestHouseImage: imagesWithUrl, // frontend friendly URLs
+                },
+            });
+        }
+    } catch (err) {
+        console.error("[GUESTHOUSE] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while managing guesthouse",
+            error: err.message,
         });
-      }
-
-      // Create new guesthouse
-      guesthouse = new Guesthouse({
-        owner: ownerId,
-        name,
-        address,
-        city,
-        state,
-        location,
-        contactNumber,
-        description,
-        images,
-      });
-
-      await guesthouse.save();
-
-      return res.status(201).json({
-        success: true,
-        message: "Guesthouse submitted successfully.",
-        data: {
-          guesthouseId: guesthouse._id,
-          status: guesthouse.status,
-          images: imagesWithUrl, // frontend friendly URLs
-        },
-      });
     }
-  } catch (err) {
-    console.error("[GUESTHOUSE] Error:", err.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while managing guesthouse",
-      error: err.message,
-    });
-  }
 };
 
 exports.getMyGuesthouse = async (req, res) => {
@@ -117,11 +118,10 @@ exports.getMyGuesthouse = async (req, res) => {
             });
         }
 
-        const baseUrl = process.env.BASE_URL || `http://localhost:5000`;
 
         const data = guesthouses.map(gh => ({
             ...gh.toObject(),
-            guestHouseImage: gh.guestHouseImage.map(img => `${baseUrl}/${img}`)
+            guestHouseImage: gh.guestHouseImage.map(img => `${baseUrl}/uploads/guestHouseImage/${img}`)
         }));
 
         return res.status(200).json({
@@ -140,11 +140,12 @@ exports.getMyGuesthouse = async (req, res) => {
     }
 };
 
-
 exports.addRoom = async (req, res) => {
     try {
         const ownerId = req.user.id;
-        const {
+
+        // Use 'let' for amenities because we will modify it
+        let {
             roomNumber,
             title,
             description,
@@ -174,8 +175,7 @@ exports.addRoom = async (req, res) => {
         }
 
         // Check guesthouse ownership & approval
-        const guesthouse = await Guesthouse.findOne({ owner: ownerId });
-
+        const guesthouse = await Guesthouse.findOne({ owner: ownerId }).sort({ createdAt: -1 });
         if (!guesthouse) {
             return res.status(403).json({
                 success: false,
@@ -183,7 +183,6 @@ exports.addRoom = async (req, res) => {
                     "Guesthouse not found, not approved, or you are not authorized to add rooms.",
             });
         }
-
         const guesthouseId = guesthouse._id;
 
         // Check duplicate room number
@@ -195,8 +194,15 @@ exports.addRoom = async (req, res) => {
             });
         }
 
-        // Save only filenames in DB
-        const photos = req.files ? req.files.map((f) => f.filename) : [];
+        // Convert amenities string to proper array
+        // Generate amenities array from string for response
+        const amenitiesArray = amenities
+            .split(",")             // comma se split
+            .map(item => item.trim()) // trim spaces
+            .filter(item => item.length > 0); // remove empty
+
+        // Save filenames for photos
+        const photos = req.files ? req.files.map(f => f.filename) : [];
 
         // Create new room
         const newRoom = new Room({
@@ -204,27 +210,29 @@ exports.addRoom = async (req, res) => {
             roomNumber,
             title,
             description,
-            amenities,
+            amenities: amenitiesArray,
             pricePerNight,
             priceWeekly,
             priceMonthly,
             capacity,
-            availability,
+            availability: availability || [],
             photos,
         });
 
         await newRoom.save();
 
-        // Generate full URLs for frontend
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-        const photosWithUrl = photos.map((name) => `${BASE_URL}/uploads/rooms/${name}`);
+        // Generate frontend-friendly full URLs for photos
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5050}`;
+        const photosWithUrl = photos.map(name => `${BASE_URL}/uploads/rooms/${name}`);
 
+        // Send response
         return res.status(201).json({
             success: true,
             message: "Room added successfully.",
             data: {
                 ...newRoom.toObject(),
-                photos: photosWithUrl, // frontend friendly
+                photos: photosWithUrl,
+                amenities: amenitiesArray // array // This will now be proper array
             },
         });
     } catch (err) {
@@ -240,7 +248,6 @@ exports.addRoom = async (req, res) => {
 exports.getRoomById = async (req, res) => {
     try {
         const { roomId } = req.params;
-
         const room = await Room.findById(roomId);
         if (!room) {
             return res.status(404).json({
@@ -277,6 +284,16 @@ exports.getAllRooms = async (req, res) => {
 
         const rooms = await Room.find({ guesthouse: guesthouse._id }).sort({ createdAt: -1 }); // latest first;
 
+        const roomsWithFullUrl = rooms.map(room => {
+            // room ke photos ko map karo aur full URL banao
+            const photosWithFullUrl = room.photos.map(img => `${baseUrl}/uploads/rooms/${img}`);
+
+            return {
+                ...room.toObject(),
+                photos: photosWithFullUrl // original photos array replace
+            };
+        });
+
         if (rooms.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -289,7 +306,7 @@ exports.getAllRooms = async (req, res) => {
             GuestHouseName: guesthouse.name,
             NoOfRooms: rooms.length,
             message: "Rooms fetched successfully",
-            data: rooms,
+            data: roomsWithFullUrl,
         });
     } catch (err) {
         console.error("[ROOM] Fetch error:", err);
@@ -348,6 +365,33 @@ exports.updateRoom = async (req, res) => {
     }
 };
 
+// exports.activeInActive = async (req, res) => {
+//     try {
+//         const roomId = req.params;
+//         if (!roomId) {
+//             res.status(400).json({
+//                 success: false,
+//                 message: "RoomId not found."
+//             })
+//         }
+//         const room = await Room.findById(roomId);
+
+//         if(!room){
+//             res.status(404).json({
+//                 sucess: true,
+//                 message:"Room not found"
+//             })
+//         }
+
+//     } catch (error) {
+//         res.status(500).json({
+//             success: false,
+//             message: "Error to active or inactive room.",
+//             error: error
+//         })
+//     }
+// }
+
 exports.deleteRoom = async (req, res) => {
     try {
         const ownerId = req.user.id;
@@ -374,11 +418,19 @@ exports.deleteRoom = async (req, res) => {
 exports.getAllBookings = async (req, res) => {
     try {
         const user = req.user;
-        const guesthouse = Guesthouse.findOne({ owner: user.id });
+        const guesthouse = await Guesthouse.findOne({ owner: user.id });
         const bookings = await Booking.find({ guesthouse: guesthouse._id }).sort({ createdAt: -1 }); // latest first;
+
+        const totalRevenue = bookings.reduce((sum, booking) => {
+            return sum + (booking.paymentStatus === "paid" ? booking.amount : 0);
+        }, 0);
+
+
         res.status(200).json({
             success: true,
             message: "Your all booking here.",
+            count: bookings.length,
+            totalRevenue,
             data: bookings
         })
     } catch (error) {
@@ -411,51 +463,6 @@ exports.getBookingById = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error fetching booking details.",
-            error: error.message,
-        });
-    }
-};
-
-exports.acceptBooking = async (req, res) => {
-    try {
-        const { bookingId } = req.params;
-
-        if (!bookingId) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide bookingId.",
-            });
-        }
-
-        const booking = await Booking.findById(bookingId);
-        if (!booking) {
-            return res.status(404).json({
-                success: false,
-                message: "No booking found.",
-            });
-        }
-
-        booking.status = "confirmed";
-        await booking.save();
-
-        // create Notification
-        await createNotification(
-            booking.customer._id,
-            "booking",
-            `Your booking ID ${booking._id} has been confirmed.`,
-            { bookingId: booking._id, status: "confirmed" }
-        );
-
-        return res.status(200).json({
-            success: true,
-            message: "Successfully confirmed booking.",
-            bookingId: booking._id,
-        });
-    } catch (error) {
-        console.error("[BOOKING] Accept error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Error accepting booking.",
             error: error.message,
         });
     }
@@ -725,5 +732,8 @@ exports.readNotification = async (req, res) => {
         });
     }
 };
+
+
+
 
 

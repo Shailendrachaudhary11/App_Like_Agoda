@@ -12,6 +12,10 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
+
+// serve uploads folder
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 // Connect to DB
 connectDB();
 
@@ -26,11 +30,6 @@ ensureUploadDirs([
   "uploads/adminImage",
   "uploads/rooms"
 ]);
-
-// Serve uploaded files statically
-// Now frontend can access images via: BASE_URL/uploads/<folder>/<filename>
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
 
 // Routes
 app.use('/api/adminAuth', adminRoutes);

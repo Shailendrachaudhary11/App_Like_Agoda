@@ -20,7 +20,6 @@ router.get("/bookings", auth(["guesthouse"]), guesthouseController.getAllBooking
 router.get("/bookings/upcoming", auth(["guesthouse"]), guesthouseController.getUpcomingBookings);
 router.get("/bookings/past", auth(["guesthouse"]), guesthouseController.getPastBookings);
 router.get("/bookings/:bookingId", auth(["guesthouse"]), guesthouseController.getBookingById);
-router.put("/bookings/:bookingId/accept", auth(["guesthouse"]), guesthouseController.acceptBooking);
 router.put("/bookings/:bookingId/reject", auth(["guesthouse"]), guesthouseController.rejectBooking);
 
 // Reviews & Notifications

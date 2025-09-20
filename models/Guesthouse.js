@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const guesthouseSchema = new mongoose.Schema({
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     name: String,
-    address: String,
     city: String,
     state: String,
     location: {
@@ -13,7 +12,7 @@ const guesthouseSchema = new mongoose.Schema({
     contactNumber: String,
     description: String,
     guestHouseImage: { type: [String] }, // guestHouse Image
-    status: { type: String, enum: ['active','suspended'], default: 'active' },
+    status: { type: String, enum: ['active','inactive'], default: 'active' },
     createdAt: { type: Date, default: Date.now }
 });
 guesthouseSchema.index({ location: '2dsphere' });

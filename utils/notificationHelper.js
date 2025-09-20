@@ -1,17 +1,20 @@
 const Notification = require("../models/notification");
 
-const createNotification = async (userId, type, message, data = {}) => {
+const createNotification = async (sender, receiver, title, message, type="general", metadata = {}) => {
   try {
     const notification = new Notification({
-      user: userId,
-      type,
+      sender,
+      receiver,
+      title,
       message,
-      data
+      type,
+      metadata
     });
     await notification.save();
+    return notification;
   } catch (err) {
     console.error("[NOTIFICATION ERROR]", err.message);
   }
 };
 
-module.exports = createNotification; // default export
+module.exports = createNotification;
