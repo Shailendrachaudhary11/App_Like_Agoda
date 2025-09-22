@@ -360,8 +360,6 @@ exports.updateProfile = async (req, res) => {
     }
 };
 
-
-
 // ------------------ forgot password -----------
 exports.changePassword = async (req, res) => {
     try {

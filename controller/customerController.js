@@ -1,7 +1,6 @@
 const Guesthouse = require("../models/Guesthouse");
 const Room = require("../models/Room");
 const Booking = require("../models/Booking")
-const sendEmail = require("../utils/sendEmail");
 const Review = require("../models/review")
 const Notification = require("../models/notification")
 const Promo = require("../models/Promo")
@@ -27,7 +26,7 @@ exports.getAllGuestHouses = async (req, res) => {
         // सिर्फ images को update करना
         guesthouses.forEach(gh => {
             if (gh.guestHouseImage && gh.guestHouseImage.length > 0) {
-                gh.guestHouseImage = gh.guestHouseImage.map(img => `${BASE_URL}/uploads/guesthouseImage/${img}`);
+                gh.guestHouseImage = gh.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
             } else {
                 gh.guestHouseImage = [];
             }
@@ -662,7 +661,7 @@ exports.deleteNotification = async (req, res) => {
         console.error("[NOTIFICATION] Error:", err.message);
         return res.status(500).json({
             success: false,
-            message: "Error deleteing notification",
+            message: "Error deleting notification",
             error: err.message
         });
     }
@@ -774,7 +773,7 @@ exports.removeFavorite = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: "romove from favorites successfully.",
+            message: "Removed from favorites successfully.",
         });
 
     } catch (error) {
@@ -916,6 +915,15 @@ exports.createBooking = async (req, res) => {
             { bookingId: booking._id, guesthouseId: guesthouseId, roomId: roomId }
         );
 
+        await createNotification(
+            { userId: customerId, role: "customer" },  // sender = customer
+            { userId: guesthouseId, role: "guesthouse" },  // receiver = guesthouse
+            "Booking Created",
+            `Booking is created for your ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Payment pending.`,
+            "booking",
+            { bookingId: booking._id, guesthouseId: guesthouseId, roomId: roomId, customerId: customerId }
+        );
+
 
         return res.status(201).json({
             success: true,
@@ -986,6 +994,15 @@ exports.payPayment = async (req, res) => {
                 guesthouseId: guesthouse._id,
                 roomId: booking.room, // assuming booking.room exists
             }
+        );
+
+        await createNotification(
+            { userId: customerId, role: "customer" },  // sender = customer
+            { userId: guesthouseId, role: "guesthouse" },  // receiver = guesthouse
+            "Payment Received",
+            `payment ${booking.amount} received of bookingId ${booking._id} is successfully received.`,
+            "payment",
+            { bookingId: booking._id, guesthouseId: guesthouseId, customerId: customerId }
         );
 
         res.status(200).json({
