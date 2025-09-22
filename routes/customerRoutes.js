@@ -11,6 +11,16 @@ router.get("/guesthouses/:id", auth(["customer"]), customerController.getGuestHo
 router.get("/rooms", auth(["customer"]), customerController.searchRooms); // room filter
 router.get("/rooms/:id", auth(["customer"]), customerController.getRoomById)
 
+// router.get("/booking/checkRoom", auth(["customer"]), customerController.checkAvaibilityRoom);
+router.post("/bookings", auth(["customer"]), customerController.createBooking);
+router.put("/bookings/:id/pay", auth(["customer"]), customerController.payPayment)
+router.get("/bookings", auth(["customer"]), customerController.allBooking);
+router.get("/bookings/past", auth(["customer"]), customerController.pastBooking);
+router.get("/bookings/upcoming", auth(["customer"]), customerController.upcomingBooking);
+router.get("/bookings/cancel", auth(["customer"]), customerController.getCancelBookings);
+router.get("/bookings/:id", auth(["customer"]), customerController.getBooking);
+router.put("/bookings/:id/cancel", auth(["customer"]), customerController.cancelBooking);
+
 router.post("/reviews", auth(["customer"]), customerController.addReviewAndRating);
 router.get("/reviews", auth(["customer"]), customerController.getAllReviews)
 router.get("/reviews/guesthouses/:id", auth(["customer"]), customerController.getReviewByGuestHouse);
@@ -27,15 +37,7 @@ router.get("/favorites", auth(["customer"]), customerController.getfavorites);
 router.post("/favorites/:id", auth(["customer"]), customerController.addFavorites);
 router.delete("/favorites/:id", auth(["customer"]), customerController.removeFavorite);
 
-// router.get("/booking/checkRoom", auth(["customer"]), customerController.checkAvaibilityRoom);
-router.post("/bookings", auth(["customer"]), customerController.createBooking);
-router.put("/bookings/:id/pay", auth(["customer"]), customerController.payPayment)
-router.get("/bookings", auth(["customer"]), customerController.allBooking);
-router.get("/bookings/past", auth(["customer"]), customerController.pastBooking);
-router.get("/bookings/upcoming", auth(["customer"]), customerController.upcomingBooking);
-router.get("/bookings/cancel", auth(["customer"]), customerController.getCancelBookings);
-router.get("/bookings/:id", auth(["customer"]), customerController.getBooking);
-router.put("/bookings/:id/cancel", auth(["customer"]), customerController.cancelBooking);
+
 
 
 module.exports = router;

@@ -8,25 +8,29 @@ const bookingSchema = new mongoose.Schema({
   checkIn: Date,
   checkOut: Date,
   nights: Number,
-  amount: Number,
+
+  // Amount details
+  amount: { type: Number, required: true },       // base price
+  discount: { type: Number, default: 0 },         // discount applied
+  finalAmount: { type: Number, required: true },  // after discount
+  promoCode: { type: String, default: null },     // promo code used
 
   status: {
     type: String,
     enum: [
       'pending',      // Customer booked
-      'confirmed',    //  after payment done 
+      'confirmed',    // after payment done 
       'rejected',     // Guesthouse rejected
       'cancelled',    // Cancelled by customer or guesthouse
     ],
     default: 'pending'
   },
 
-  reason: { type: String }, // rejection/cancellation reason
+  reason: { type: String }, 
   paymentStatus: { type: String, enum: ['unpaid', 'paid', 'refunded'], default: 'unpaid' },
 
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
-
 
 module.exports = mongoose.model('Booking', bookingSchema);

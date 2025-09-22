@@ -11,10 +11,11 @@ router.get("/guesthouses/my", auth(["guesthouse"]), guesthouseController.getMyGu
 // Room Management
 router.post("/rooms", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.addRoom);
 router.get("/rooms", auth(["guesthouse"]), guesthouseController.getAllRooms);
-router.get("/rooms/:roomId", auth(["guesthouse"]), guesthouseController.getRoomById);
+router.get("/rooms/disable", auth(["guesthouse"]), guesthouseController.getDisableRooms);
+router.get("/rooms/getRoomById", auth(["guesthouse"]), guesthouseController.getRoomById);
 router.put("/rooms/:roomId", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.updateRoom);
-router.delete("/rooms/:roomId", auth(["guesthouse"]), guesthouseController.deleteRoom);
-router.put("/rooms/:roomId/disable", auth(["guesthouse"]), guesthouseController.activeInActive);
+router.delete("/rooms/deleteRoomById", auth(["guesthouse"]), guesthouseController.deleteRoom);
+router.post("/rooms/disable", auth(["guesthouse"]), guesthouseController.activeInActive);
 
 // Booking Management
 router.get("/bookings", auth(["guesthouse"]), guesthouseController.getAllBookings);

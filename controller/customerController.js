@@ -861,6 +861,35 @@ exports.createBooking = async (req, res) => {
 
         const nights = Math.ceil((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24));
         const amount = nights * room.pricePerNight;
+        let finalAmount = amount;
+        let discountAmount = 0;
+
+        let promo;
+        if (promoCode) {
+            promo = await Promo.findOne({ code: promoCode });
+            if (!promo) {
+                return res.status(400).json({
+                    success: false,
+                    message: "No promocode found."
+                })
+            }
+
+            const promoStart = new Date(promo.startDate);
+            const promoEnd = new Date(promo.endDate);
+            if (checkInDate >= promoStart && checkOutDate <= promoEnd) {
+                if (promo.discountType === "flat") {
+                    discountAmount = promo.discountValue;
+                } else if (promo.discountType === "percentage") {
+                    finalAmount -= (amount * promo.discountValue) / 100;
+                }
+                finalAmount -= discountAmount;
+
+                if (finalAmount < 0) {
+                    finalAmount = 0;
+                }
+            }
+        }
+
 
 
         // let appliedPromo = null;
@@ -897,7 +926,11 @@ exports.createBooking = async (req, res) => {
             checkIn: checkInDate,
             checkOut: checkOutDate,
             nights,
-            amount
+            amount,
+            discount: discountAmount,
+            finalAmount,
+            promoCode: promoCode || null
+
         });
 
         await booking.save();
@@ -1007,7 +1040,7 @@ exports.payPayment = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: `Payment successful for booking ${id}`,
+            message: `Payment ${booking.finalAmount} successful for booking ${id}`,
             data: booking
         });
 

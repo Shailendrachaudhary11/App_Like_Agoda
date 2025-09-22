@@ -246,31 +246,6 @@ exports.addRoom = async (req, res) => {
     }
 };
 
-exports.getRoomById = async (req, res) => {
-    try {
-        const { roomId } = req.params;
-        const room = await Room.findById(roomId);
-        if (!room) {
-            return res.status(404).json({
-                success: false,
-                message: "No Room found",
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: room,
-        });
-    } catch (err) {
-        console.error("[ROOM] Get by ID error:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Server error while fetching room.",
-            error: err.message,
-        });
-    }
-};
-
 exports.getAllRooms = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -319,6 +294,33 @@ exports.getAllRooms = async (req, res) => {
     }
 };
 
+exports.getRoomById = async (req, res) => {
+    try {
+        const roomId = req.body.roomId;
+        const room = await Room.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: "No Room found",
+            });
+        }
+        const roomUrl = room.photos.map(img => `${baseUrl}/uploads/rooms/${img}`)
+        room.photos = roomUrl;
+
+        return res.status(200).json({
+            success: true,
+            data: room
+        });
+    } catch (err) {
+        console.error("[ROOM] Get by ID error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Server error while fetching room.",
+            error: err.message,
+        });
+    }
+};
+
 exports.updateRoom = async (req, res) => {
     try {
         const { roomId } = req.params;
@@ -334,24 +336,26 @@ exports.updateRoom = async (req, res) => {
             return res.status(404).json({ success: false, message: "Room not found." });
         }
 
-        // अगर नई photos upload हुईं
+        // Photos update
         if (req.files && req.files.length > 0) {
-            // पुरानी delete करो
             room.photos.forEach(img => {
                 const oldPath = path.join(__dirname, "..", "uploads", "rooms", img);
                 if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
             });
 
-            // DB में सिर्फ filename save
             room.photos = req.files.map(f => f.filename);
         }
 
-        // बाकी fields update
-        Object.assign(room, req.body);
+        // Only allowed fields update
+        const { name, description, price, amenities, capacity } = req.body;
+        if (name) room.name = name;
+        if (description) room.description = description;
+        if (price) room.price = price;
+        if (amenities) room.amenities = amenities;
+        if (capacity) room.capacity = capacity;
 
         await room.save();
 
-        // अब response में full URL भेजो
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
         const photos = room.photos.map(name => `${BASE_URL}/uploads/rooms/${name}`);
 
@@ -368,7 +372,7 @@ exports.updateRoom = async (req, res) => {
 
 exports.activeInActive = async (req, res) => {
     try {
-        const { roomId } = req.params;
+        let roomId = req.body.roomId;
         if (!roomId) {
             res.status(400).json({
                 success: false,
@@ -409,7 +413,7 @@ exports.activeInActive = async (req, res) => {
 exports.deleteRoom = async (req, res) => {
     try {
         const ownerId = req.user.id;
-        const { roomId } = req.params;
+        const { roomId } = req.body.roomId;
 
         const guesthouse = await Guesthouse.findOne({ owner: ownerId });
         if (!guesthouse) return res.status(403).json({ success: false, message: "No guest house found" });
@@ -426,6 +430,54 @@ exports.deleteRoom = async (req, res) => {
     } catch (err) {
         console.error("[ROOM] Delete error:", err);
         return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
+exports.getDisableRooms = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const guesthouse = await Guesthouse.findOne({ owner: userId });
+
+        if (!guesthouse) {
+            return res.status(404).json({
+                success: false,
+                message: "No Guesthouse details found",
+            });
+        }
+
+        const rooms = await Room.find({ guesthouse: guesthouse._id, active: "inactive" }).sort({ createdAt: -1 }); // latest first;
+
+        const roomsWithFullUrl = rooms.map(room => {
+            // room ke photos ko map karo aur full URL banao
+            const photosWithFullUrl = room.photos.map(img => `${baseUrl}/uploads/rooms/${img}`);
+
+            return {
+                ...room.toObject(),
+                photos: photosWithFullUrl // original photos array replace
+            };
+        });
+
+        if (rooms.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No rooms found for this guesthouse",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            GuestHouseName: guesthouse.name,
+            NoOfRooms: rooms.length,
+            message: "Disable Rooms fetched successfully",
+            data: roomsWithFullUrl,
+        });
+    } catch (err) {
+        console.error("[ROOM] Fetch error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Server error while fetching rooms",
+            error: err.message,
+        });
     }
 };
 

@@ -1376,13 +1376,14 @@ exports.activateCustomer = async (req, res) => {
 // ---------------- Booking ------------------------
 exports.getAllBooking = async (req, res) => {
     try {
-        const bookings = await Booking.find()
-            .populate("guesthouse")   // guesthouse details
-            .populate("customer")     // customer details
-            .populate("room");        // room details (अगर schema में है)
+        const bookings = await Booking.find().sort({ createdAt: -1 });
+
+        const totalRevenue = bookings.reduce((sum, booking) => sum + booking.amount, 0);
 
         return res.status(200).json({
             success: true,
+            count: bookings.length,
+            totelRevenue: totalRevenue,
             message: "Successfully fetched all bookings.",
             data: bookings
         });
