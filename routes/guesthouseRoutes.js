@@ -14,7 +14,7 @@ router.get("/rooms", auth(["guesthouse"]), guesthouseController.getAllRooms);
 router.get("/rooms/disable", auth(["guesthouse"]), guesthouseController.getDisableRooms);
 router.get("/rooms/getRoomById", auth(["guesthouse"]), guesthouseController.getRoomById);
 router.put("/rooms/:roomId", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.updateRoom);
-router.delete("/rooms/deleteRoomById", auth(["guesthouse"]), guesthouseController.deleteRoom);
+router.delete("/rooms/:roomId/delete", auth(["guesthouse"]), guesthouseController.deleteRoom);
 router.post("/rooms/disable", auth(["guesthouse"]), guesthouseController.activeInActive);
 
 // Booking Management
@@ -22,7 +22,7 @@ router.get("/bookings", auth(["guesthouse"]), guesthouseController.getAllBooking
 router.get("/bookings/upcoming", auth(["guesthouse"]), guesthouseController.getUpcomingBookings);
 router.get("/bookings/past", auth(["guesthouse"]), guesthouseController.getPastBookings);
 router.get("/bookings/:bookingId", auth(["guesthouse"]), guesthouseController.getBookingById);
-router.put("/bookings/:bookingId/reject", auth(["guesthouse"]), guesthouseController.rejectBooking);
+router.put("/bookings/:bookingId/cancel", auth(["guesthouse"]), guesthouseController.cancelBooking);
 router.get("/bookings/:bookingId/contact", auth(["guesthouse"]), guesthouseController.getContactDetails);
 
 // Reviews & Notifications

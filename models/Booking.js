@@ -20,7 +20,6 @@ const bookingSchema = new mongoose.Schema({
     enum: [
       'pending',      // Customer booked
       'confirmed',    // after payment done 
-      'rejected',     // Guesthouse rejected
       'cancelled',    // Cancelled by customer or guesthouse
     ],
     default: 'pending'

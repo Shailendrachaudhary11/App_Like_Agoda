@@ -1,4 +1,3 @@
-const createNotification = require("../utils/notificationHelper"); // helper path
 const AdminUser = require("../models/adminUser");
 const Guesthouse = require("../models/Guesthouse");
 const bcrypt = require("bcryptjs");
@@ -7,6 +6,8 @@ const Room = require("../models/Room")
 const Promo = require("../models/Promo");
 const User = require("../models/user")
 const Booking = require("../models/Booking")
+const Notification = require("../models/notification")
+const createNotification = require("../utils/notificationHelper");
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -69,7 +70,6 @@ exports.register = async (req, res) => {
     }
 };
 
-// ---------------- Admin Login ----------------
 exports.login = async (req, res) => {
     try {
         let { email, password } = req.body;
@@ -137,7 +137,6 @@ exports.login = async (req, res) => {
     }
 };
 
-// ------------------ Get My Profile -------------
 exports.getProfile = async (req, res) => {
     try {
         const adminId = req.user?.id;
@@ -183,7 +182,6 @@ exports.getProfile = async (req, res) => {
     }
 };
 
-// -------------- update my profile ------------
 exports.updateProfile = async (req, res) => {
     try {
         console.log("Updating profile:", req.user?._id);
@@ -296,7 +294,6 @@ exports.updateProfile = async (req, res) => {
     }
 };
 
-// --------------- change password ----------
 exports.changePassword = async (req, res) => {
     try {
         if (!req.body) {
@@ -379,132 +376,8 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-// ---------------- Approve registration Guesthouse ----------------
-exports.approveGuesthouse = async (req, res) => {
-    try {
-        const { id: guesthouseId } = req.params;
-        if (!guesthouseId) {
-            return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
-        }
 
-        console.log(`[GUESTHOUSE] Approving registration: ${guesthouseId}`);
-
-        // Find guesthouse user by ID and role
-        const guesthouseUser = await User.findOne({ _id: guesthouseId, role: "guesthouse" });
-        if (!guesthouseUser) {
-            return res.status(404).json({
-                success: false,
-                message: "Guesthouse registration not found."
-            });
-        }
-
-        if (guesthouseUser.status === "approved") {
-            return res.status(200).json({
-                success: true,
-                message: "Guesthouse registration is already approved.",
-                data: {
-                    id: guesthouseUser._id,
-                    name: guesthouseUser.name,
-                    email: guesthouseUser.email,
-                    status: guesthouseUser.status
-                }
-            });
-        }
-
-        // Update status
-        guesthouseUser.status = "approved";
-        await guesthouseUser.save();
-
-        console.log(`[GUESTHOUSE] Registration approved: ${guesthouseId}`);
-
-        // // Send notification to guesthouse owner
-        // await createNotification(
-        //     guesthouseUser._id,
-        //     "general",
-        //     `Your guesthouse registration "${guesthouseUser.name}" has been approved by admin.`,
-        //     { userId: guesthouseUser._id }
-        // );
-
-        console.log(`[GUESTHOUSE] Notification sent to owner: ${guesthouseUser._id}`);
-
-        return res.status(200).json({
-            success: true,
-            message: "Guesthouse registration approved successfully.",
-            data: {
-                id: guesthouseUser._id,
-                name: guesthouseUser.name,
-                email: guesthouseUser.email,
-                status: guesthouseUser.status,
-                approvedAt: new Date()
-            }
-        });
-
-    } catch (err) {
-        console.error("[GUESTHOUSE] Error approving registration:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to approve guesthouse registration.",
-            error: err.message
-        });
-    }
-};
-
-// ---------------- Reject registration Guesthouse ----------------
-exports.rejectGuesthouse = async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log("Rejecting guesthouse registration:", id);
-
-        const guesthouseUser = await User.findOne({ _id: id, role: "guesthouse" });
-        if (!guesthouseUser) {
-            return res.status(404).json({
-                success: false,
-                message: "Guesthouse registration not found."
-            });
-        }
-
-        if (guesthouseUser.status === "reject") {
-            return res.status(200).json({
-                success: true,
-                message: "Guesthouse registration is already reject.",
-                data: {
-                    id: guesthouseUser._id,
-                    name: guesthouseUser.name,
-                    email: guesthouseUser.email,
-                    status: guesthouseUser.status
-                }
-            });
-        }
-
-        guesthouseUser.status = "reject";
-
-        await guesthouseUser.save();
-
-        // await createNotification(
-        //     guesthouseUser._id,
-        //     "general",
-        //     `Your guesthouse "${guesthouseUser.name}" has been reject by admin.`,
-        //     { guesthouseUser: guesthouseUser._id }
-        // );
-        // console.log("Notification sent to owner:", guesthouseUser._id);
-
-        console.log("Guesthouse registration rejected:", id);
-        return res.status(200).json({
-            success: true,
-            message: "Guesthouse registration rejected successfully.",
-            data: guesthouseUser
-        });
-    } catch (err) {
-        console.error("Error registration rejecting  guesthouse:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to registration reject of guesthouse.",
-            error: err.message
-        });
-    }
-};
-
-// ------------------ get all guesthouse owner---------------
+// -------------------------------------------- GUEST HOUSE ---------------------------------------
 exports.getAllGuestOwner = async (req, res) => {
     try {
         const guestOwners = await User.find({ role: "guesthouse" }).select("-password").select("-role").select("-otp").select("-otpExpiry");;
@@ -533,7 +406,36 @@ exports.getAllGuestOwner = async (req, res) => {
     }
 };
 
-// --------------- get guesthouse Owner By id ---------
+exports.getPendingRegistration = async (req, res) => {
+    try {
+        const guestOwners = await User.find({ role: "guesthouse", status: "pending" })
+            .select("-password")
+            .sort({ createdAt: -1 });
+
+        const updatedGuestOwners = guestOwners.map(guestOwner => {
+            const guestOwnerObj = guestOwner.toObject();
+            if (guestOwnerObj.profileImage) {
+                guestOwnerObj.profileImage = `${BASE_URL}/uploads/profileImage/${guestOwnerObj.profileImage}`;
+            }
+            return guestOwnerObj;
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Successfully fetched all pending guesthouse owners.",
+            count: updatedGuestOwners.length,
+            data: updatedGuestOwners
+        });
+    } catch (err) {
+        console.error("[CUSTOMER] Error fetching customers:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching customers",
+            error: err.message
+        });
+    }
+};
+
 exports.getGuestOwnerById = async (req, res) => {
     try {
         const guestHouseOwnerId = req.params.id;
@@ -581,7 +483,6 @@ exports.getGuestOwnerById = async (req, res) => {
     }
 };
 
-// ---------------- Get All Guesthouses ----------------
 exports.getAllGuestHouses = async (req, res) => {
     try {
         console.log("Fetching all guesthouses");
@@ -623,65 +524,63 @@ exports.getAllGuestHouses = async (req, res) => {
     }
 };
 
-// ----------------- get active or inactive guesthouses-----------
-exports.getGuesthouses = async (req, res) => {
+exports.updateGuestHouse = async (req, res) => {
     try {
-        const { status } = req.params; // "active" ya "inactive"
+        const { id } = req.params;
+        const { name, address, city, state, location, contactNumber, description } = req.body;
 
-        let filter = {};
-        if (status === "active") {
-            filter.status = "active";
-        } else if (status === "inactive") {
-            filter.status = "inactive";
-        }
+        const guesthouse = await Guesthouse.findById(id);
 
-        const guesthouses = await Guesthouse.find(filter);
-
-        if (guesthouses.length === 0) {
+        if (!guesthouse) {
             return res.status(404).json({
                 success: false,
-                statusCode: 404,
-                message: `No ${status ? status : "guesthouses"} found.`,
-                data: []
+                message: "Guesthouse not found",
             });
         }
 
-        const formattedGuestHouses = guesthouses.map(gh => {
-            const ghObj = gh.toObject();
+        console.log(`[GUESTHOUSE] Updating guesthouse ${id} by user ${req.user?.id || "unknown"}`);
 
-            // GuestHouse Images
-            if (ghObj.guestHouseImage) {
-                ghObj.guestHouseImage = ghObj.guestHouseImage.map(img =>
-                    `${BASE_URL}/uploads/guestHouseImage/${img.trim()}`
-                );
+        // Handle images (optional)
+
+        if (req.files && req.files.length > 0) {
+            guesthouse.guestHouseImage = req.files.map(file => file.filename);
+        }
+
+        // Update/add fields dynamically
+        const fields = { name, address, city, state, location, contactNumber, description };
+        for (const key in fields) {
+            if (fields[key] !== undefined && fields[key] !== null) {
+                guesthouse[key] = fields[key];
             }
+        }
+        await guesthouse.save();
 
-            // Owner profile image
-            if (ghObj.owner && ghObj.owner.profileImage) {
-                ghObj.owner.profileImage = `${BASE_URL}/uploads/profileImage/${ghObj.owner.profileImage}`;
-            }
-
-            return ghObj; // Important! Return the transformed object
-        });
+        const guesthouseId = guesthouse._id;
+        await createNotification(
+            { userId: req.user.id, role: req.user.role },   // sender (jo update kar raha hai)
+            { userId: guesthouseId, role: "guesthouse" }, // receiver (guesthouse ko)
+            "Guesthouse Updated",
+            `Your guesthouse "${guesthouse.name}" has been updated successfully by admin.`,
+            "system",
+            { guesthouseId: guesthouse._id }
+        );
 
         return res.status(200).json({
             success: true,
-            statusCode: 200,
-            count: formattedGuestHouses.length,
-            data: formattedGuestHouses,
+            message: "Guesthouse updated successfully.",
+            data: guesthouse._id,
         });
+
     } catch (err) {
-        console.error("[GUESTHOUSE] Error fetching guesthouses:", err.message);
+        console.error("[GUESTHOUSE] Error:", err.message);
         return res.status(500).json({
             success: false,
-            statusCode: 500,
-            message: "Something went wrong.",
+            message: "Internal server error while updating guesthouse",
             error: err.message,
         });
     }
 };
 
-// ---------------- Get Guesthouse By ID ----------------
 exports.getGuestHousesById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -734,152 +633,76 @@ exports.getGuestHousesById = async (req, res) => {
     }
 };
 
-// ------------- edit guesthouse details
-exports.updateGuestHouse = async (req, res) => {
-    try {
-        const guesthouseId = req.params.id;
-        if (!guesthouseId) {
-            return res.status(400).json({ success: false, message: "Please provide guesthouse Id." });
-        }
+// exports.suspendedGuestHouse = async (req, res) => {
+//     try {
+//         const { id: guesthouseId } = req.params;
+//         if (!guesthouseId) {
+//             return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
+//         }
 
-        const guesthouse = await Guesthouse.findById(guesthouseId);
-        if (!guesthouse) {
-            return res.status(404).json({ success: false, message: "No guesthouse found." });
-        }
+//         console.log(`[GUESTHOUSE] Suspending guesthouse: ${guesthouseId}`);
 
-        const {
-            name,
-            address,
-            city,
-            state,
-            location,
-            contactNumber,
-            description
-        } = req.body || {};
+//         // Populate owner to access email or _id
+//         const guesthouse = await Guesthouse.findById(guesthouseId).populate("owner", "name email _id");
+//         if (!guesthouse) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "Guesthouse not found."
+//             });
+//         }
 
-        console.log(`[GUESTHOUSE] Updating guesthouse ${guesthouseId}`);
+//         // Check if already suspended
+//         if (guesthouse.status === "suspended") {
+//             return res.status(200).json({
+//                 success: true,
+//                 message: "Guesthouse is already suspended.",
+//                 data: {
+//                     id: guesthouse._id,
+//                     name: guesthouse.name,
+//                     ownerName: guesthouse.owner?.name,
+//                     ownerEmail: guesthouse.owner?.email,
+//                     status: guesthouse.status
+//                 }
+//             });
+//         }
 
-        // Handle images safely
-        if (req.files && req.files.length > 0) {
-            guesthouse.guestHouseImage = req.files.map(file => file.filename);
-        }
+//         // Update status
+//         guesthouse.status = "suspended";
+//         await guesthouse.save();
 
-        // Duplicate name check (exclude current guesthouse)
-        const duplicateName = await Guesthouse.findOne({ name: name });
-        if (duplicateName) {
-            return res.status(400).json({
-                success: false,
-                message: "Name must be Unique or different from current name."
-            })
-        }
+//         // Send notification if owner exists
+//         if (guesthouse.owner?._id) {
+//             await createNotification(
+//                 guesthouse.owner._id,
+//                 "general",
+//                 `Your guesthouse "${guesthouse.name}" has been suspended by admin.`,
+//                 { guesthouseId: guesthouse._id }
+//             );
+//             console.log(`[GUESTHOUSE] Notification sent to owner: ${guesthouse.owner._id}`);
+//         }
 
-        // Update other fields safely
-        if (name) guesthouse.name = name;
-        if (address) guesthouse.address = address;
-        if (city) guesthouse.city = city;
-        if (state) guesthouse.state = state;
-        if (location) guesthouse.location = location;
-        if (contactNumber) guesthouse.contactNumber = contactNumber;
-        if (description) guesthouse.description = description;
+//         return res.status(200).json({
+//             success: true,
+//             message: "Guesthouse suspended successfully.",
+//             data: {
+//                 id: guesthouse._id,
+//                 name: guesthouse.name,
+//                 ownerName: guesthouse.owner?.name,
+//                 ownerEmail: guesthouse.owner?.email,
+//                 status: guesthouse.status
+//             }
+//         });
 
-        await guesthouse.save();
+//     } catch (err) {
+//         console.error("[GUESTHOUSE] Error suspending guesthouse:", err);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Failed to suspend guesthouse.",
+//             error: err.message
+//         });
+//     }
+// };
 
-        // Notification
-        // await createNotification(
-        //     guesthouse.owner?._id || guesthouse.owner,
-        //     "general",
-        //     `Your guesthouse "${guesthouse.name}" has been updated by admin.`,
-        //     { guesthouseId: guesthouse._id }
-        // );
-
-        return res.status(200).json({
-            success: true,
-            message: "Guesthouse updated successfully.",
-            data: guesthouseId
-        });
-
-    } catch (err) {
-        console.error("[GUESTHOUSE] Error:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while updating guesthouse",
-            error: err.message
-        });
-    }
-};
-
-// ----------------- Suspended GuestHouse ------------
-exports.suspendedGuestHouse = async (req, res) => {
-    try {
-        const { id: guesthouseId } = req.params;
-        if (!guesthouseId) {
-            return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
-        }
-
-        console.log(`[GUESTHOUSE] Suspending guesthouse: ${guesthouseId}`);
-
-        // Populate owner to access email or _id
-        const guesthouse = await Guesthouse.findById(guesthouseId).populate("owner", "name email _id");
-        if (!guesthouse) {
-            return res.status(404).json({
-                success: false,
-                message: "Guesthouse not found."
-            });
-        }
-
-        // Check if already suspended
-        if (guesthouse.status === "suspended") {
-            return res.status(200).json({
-                success: true,
-                message: "Guesthouse is already suspended.",
-                data: {
-                    id: guesthouse._id,
-                    name: guesthouse.name,
-                    ownerName: guesthouse.owner?.name,
-                    ownerEmail: guesthouse.owner?.email,
-                    status: guesthouse.status
-                }
-            });
-        }
-
-        // Update status
-        guesthouse.status = "suspended";
-        await guesthouse.save();
-
-        // Send notification if owner exists
-        if (guesthouse.owner?._id) {
-            await createNotification(
-                guesthouse.owner._id,
-                "general",
-                `Your guesthouse "${guesthouse.name}" has been suspended by admin.`,
-                { guesthouseId: guesthouse._id }
-            );
-            console.log(`[GUESTHOUSE] Notification sent to owner: ${guesthouse.owner._id}`);
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "Guesthouse suspended successfully.",
-            data: {
-                id: guesthouse._id,
-                name: guesthouse.name,
-                ownerName: guesthouse.owner?.name,
-                ownerEmail: guesthouse.owner?.email,
-                status: guesthouse.status
-            }
-        });
-
-    } catch (err) {
-        console.error("[GUESTHOUSE] Error suspending guesthouse:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to suspend guesthouse.",
-            error: err.message
-        });
-    }
-};
-
-// ----------------- Activate GuestHouse --------------
 exports.activeInactiveGuesthouse = async (req, res) => {
     try {
         const { id: guesthouseId } = req.params;
@@ -946,7 +769,130 @@ exports.activeInactiveGuesthouse = async (req, res) => {
     }
 };
 
-// ------------------- GET ALL ROOMS
+exports.approveGuesthouse = async (req, res) => {
+    try {
+        const { id: guesthouseId } = req.params;
+        if (!guesthouseId) {
+            return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
+        }
+
+        console.log(`[GUESTHOUSE] Approving registration: ${guesthouseId}`);
+
+        // Find guesthouse user by ID and role
+        const guesthouseUser = await User.findOne({ _id: guesthouseId, role: "guesthouse" });
+        if (!guesthouseUser) {
+            return res.status(404).json({
+                success: false,
+                message: "Guesthouse registration not found."
+            });
+        }
+
+        if (guesthouseUser.status === "approved") {
+            return res.status(200).json({
+                success: true,
+                message: "Guesthouse registration is already approved.",
+                data: {
+                    id: guesthouseUser._id,
+                    name: guesthouseUser.name,
+                    email: guesthouseUser.email,
+                    status: guesthouseUser.status
+                }
+            });
+        }
+
+        // Update status
+        guesthouseUser.status = "approved";
+        await guesthouseUser.save();
+
+        console.log(`[GUESTHOUSE] Registration approved: ${guesthouseId}`);
+
+        await createNotification(
+            { userId: req.user.id, role: req.user.role },   // sender (admin)
+            { userId: guesthouseUser._id, role: "guesthouse" }, // receiver (guesthouse user)
+            "Guesthouse Approved",
+            `${guesthouseUser.name}, your registration has been approved.`,
+            "system",
+            { guesthouseId: guesthouseUser._id }
+        );
+        console.log(`[GUESTHOUSE] Notification sent to owner: ${guesthouseUser._id}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Guesthouse registration approved successfully.",
+            data: {
+                id: guesthouseUser._id,
+                name: guesthouseUser.name,
+                email: guesthouseUser.email,
+                status: guesthouseUser.status,
+                approvedAt: new Date()
+            }
+        });
+
+    } catch (err) {
+        console.error("[GUESTHOUSE] Error approving registration:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to approve guesthouse registration.",
+            error: err.message
+        });
+    }
+};
+
+exports.rejectGuesthouse = async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log("Rejecting guesthouse registration:", id);
+
+        const guesthouseUser = await User.findOne({ _id: id, role: "guesthouse" });
+        if (!guesthouseUser) {
+            return res.status(404).json({
+                success: false,
+                message: "Guesthouse registration not found."
+            });
+        }
+
+        if (guesthouseUser.status === "reject") {
+            return res.status(200).json({
+                success: true,
+                message: "Guesthouse registration is already reject.",
+                data: {
+                    id: guesthouseUser._id,
+                    name: guesthouseUser.name,
+                    email: guesthouseUser.email,
+                    status: guesthouseUser.status
+                }
+            });
+        }
+
+        guesthouseUser.status = "reject";
+
+        await guesthouseUser.save();
+
+        // await createNotification(
+        //     guesthouseUser._id,
+        //     "general",
+        //     `Your guesthouse "${guesthouseUser.name}" has been reject by admin.`,
+        //     { guesthouseUser: guesthouseUser._id }
+        // );
+        // console.log("Notification sent to owner:", guesthouseUser._id);
+
+        console.log("Guesthouse registration rejected:", id);
+        return res.status(200).json({
+            success: true,
+            message: "Guesthouse registration rejected successfully.",
+            data: guesthouseUser
+        });
+    } catch (err) {
+        console.error("Error registration rejecting  guesthouse:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to registration reject of guesthouse.",
+            error: err.message
+        });
+    }
+};
+
+// -------------------------------------------- ROOM MANAGEMENT ---------------------------------------
 exports.getAllRooms = async (req, res) => {
     try {
         const rooms = await Room.find().populate("guesthouse");
@@ -987,7 +933,6 @@ exports.getAllRooms = async (req, res) => {
     }
 };
 
-// ---------------- GET rooms by id ----------------
 exports.getRoomById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1034,7 +979,6 @@ exports.getRoomById = async (req, res) => {
     }
 };
 
-// ---------------- PUT update rooms by id ----------------
 exports.editRoom = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1112,7 +1056,6 @@ exports.editRoom = async (req, res) => {
     }
 };
 
-// ------------- DELETE ROOMS --------------
 exports.deleteRoom = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1143,7 +1086,7 @@ exports.deleteRoom = async (req, res) => {
     }
 };
 
-// --------------GET ALL CUSTOMERS
+// -------------------------------------------- CUSTOMER MANAGEMENT ---------------------------------------
 exports.getAllCustomer = async (req, res) => {
     try {
         const customers = await User.find({ role: "customer" }).select("-password").select("-role").select("-otp").select("-otpExpiry");
@@ -1172,7 +1115,6 @@ exports.getAllCustomer = async (req, res) => {
     }
 };
 
-// ---------------------GET CUSTOMER BY ID
 exports.getCustomerById = async (req, res) => {
     try {
         const customerId = req.params.id; // URL से id लो
@@ -1214,7 +1156,6 @@ exports.getCustomerById = async (req, res) => {
     }
 };
 
-// ------------ Approve Customer --------------
 exports.approvalCustomer = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1251,7 +1192,6 @@ exports.approvalCustomer = async (req, res) => {
     }
 };
 
-// ---------------- Reject Customer ----------------
 exports.rejectCustomer = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1295,8 +1235,7 @@ exports.rejectCustomer = async (req, res) => {
     }
 };
 
-// ---------------- Suspend Customer ----------------
-exports.suspendedCustomer = async (req, res) => {
+exports.suspendedApproveCustomer = async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -1308,82 +1247,41 @@ exports.suspendedCustomer = async (req, res) => {
             });
         }
 
-        user.status = "suspended";
-
-        // await createNotification(
-        //     user._id,
-        //     "general",
-        //     `Your account "${user.name}" has been suspended by admin.`,
-        //     { user: user._id }
-        // );
-
-        await user.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "User suspended successfully.",
-            userId: user._id,
-            role: user.role
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Failed to suspend user.",
-            error: err.message
-        });
-    }
-};
-
-// ---------------- Activate Customer ----------------
-exports.activateCustomer = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found."
-            });
+        if (user.status === "suspended") {
+            user.status = "approved";
+        }
+        else {
+            user.status = "suspended";
         }
 
-        user.status = "approved"; // or "active"
-
-        // await createNotification(
-        //     user._id,
-        //     "general",
-        //     `Your account "${user.name}" has been re-active by admin.`,
-        //     { user: user._id }
-        // );
-
         await user.save();
 
         return res.status(200).json({
             success: true,
-            message: "User activated successfully.",
+            message: `User ${user.status} successfully.`,
             userId: user._id,
             role: user.role
         });
     } catch (err) {
         return res.status(500).json({
             success: false,
-            message: "Failed to activate user.",
+            message: `Failed to ${user.status} user.`,
             error: err.message
         });
     }
 };
 
-// ---------------- Booking ------------------------
+
+// -------------------------------------------- BOOKING ---------------------------------------
 exports.getAllBooking = async (req, res) => {
     try {
         const bookings = await Booking.find().sort({ createdAt: -1 });
 
-        const totalRevenue = bookings.reduce((sum, booking) => sum + booking.amount, 0);
+        // const totalRevenue = bookings.reduce((sum, booking) => sum + booking.amount, 0);
 
         return res.status(200).json({
             success: true,
             count: bookings.length,
-            totelRevenue: totalRevenue,
             message: "Successfully fetched all bookings.",
             data: bookings
         });
@@ -1398,7 +1296,6 @@ exports.getAllBooking = async (req, res) => {
     }
 };
 
-// booking by Id
 exports.getBookingById = async (req, res) => {
     try {
         const bookingId = req.params.id; // URL से bookingId लो
@@ -1438,6 +1335,73 @@ exports.getBookingById = async (req, res) => {
     }
 };
 
+exports.pastBooking = async (req, res) => {
+    try {
+        const today = new Date();
+
+        const pastBookings = await Booking.find({
+            checkOut: { $lt: today }, // booking already ended
+        })
+            .populate("guesthouse", "name location")
+            .populate("room", "roomNumber title pricePerNight")
+            .sort({ checkOut: -1 });
+
+        if (pastBookings.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "No past booking found"
+            })
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetch past Bookings",
+            count: pastBooking.length,
+            data: pastBookings
+        })
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error to fetching past booking.",
+            Error: error
+        })
+    }
+}
+
+exports.upcomingBookings = async (req, res) => {
+    try {
+        const today = new Date();
+
+        const upcomingBookings = await Booking.find({
+            checkIn: { $gt: today }
+        })
+            .populate("guesthouse", "name location")
+            .populate("room", "roomNumber title pricePerNight")
+            .sort({ checkIn: 1 });
+
+        if (upcomingBookings.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "No upcoming booking found"
+            })
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetch upcoming Bookings",
+            count: upcomingBookings.length,
+            data: upcomingBookings
+        })
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error to fetching upcoming booking.",
+            Error: error
+        })
+    }
+}
 
 // Get all promos
 exports.getAllPromo = async (req, res) => {
@@ -1456,7 +1420,6 @@ exports.getAllPromo = async (req, res) => {
         });
     }
 };
-
 
 // create Promo
 exports.createPromo = async (req, res) => {
@@ -1524,8 +1487,15 @@ exports.createPromo = async (req, res) => {
 exports.getPromoById = async (req, res) => {
     try {
         const promo = await Promo.findById(req.params.id);
-        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
-        res.status(200).json({ success: true, data: promo });
+        if (!promo) return res.status(404).json({
+            success: false,
+            message: "Promo not found"
+        });
+        res.status(200).json({
+            success: true,
+            message: `Successfully fetch promo code.`,
+            data: promo
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: "Error fetching promo", error: err.message });
     }
@@ -1550,5 +1520,118 @@ exports.deletePromo = async (req, res) => {
         res.status(200).json({ success: true, message: "Promo deleted successfully" });
     } catch (err) {
         res.status(500).json({ success: false, message: "Error deleting promo", error: err.message });
+    }
+};
+
+exports.getAllNotification = async (req, res) => {
+    try {
+        const adminId = req.user.id;
+
+        const notifications = await Notification.find({
+            "receiver.userId": adminId,
+            "receiver.role": "admin",
+        })
+            .sort({ createdAt: -1 })
+            .lean();
+
+
+        if (!notifications || notifications.length === 0) {
+            return res.status(200).json({
+                success: true,
+                statusCode: 200,
+                message: "No notifications found.",
+                count: 0,
+                data: []
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            statusCode: 200,
+            message: "Notifications fetched successfully.",
+            count: notifications.length,
+            data: notifications
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error to fetching notifications",
+            error: error
+        })
+    }
+}
+
+exports.readNotification = async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const adminId = req.user.id;
+
+        //  Await जरूरी है
+        const notification = await Notification.findOne({
+            _id: notificationId,
+            "receiver.userId": adminId,
+        });
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: "No Notification found."
+            });
+        }
+
+        //  Mark as read
+        notification.isRead = true;
+        await notification.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Notification marked as read",
+            data: notification
+        });
+
+    } catch (err) {
+        console.error("[NOTIFICATION] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error updating notification",
+            error: err.message
+        });
+    }
+};
+
+exports.deleteNotification = async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const adminId = req.user.id;
+
+        //  Await जरूरी है
+        const notification = await Notification.findOne({
+            _id: notificationId,
+            "receiver.userId": adminId,
+        });
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: "No Notification found."
+            });
+        }
+
+        await notification.deleteOne();
+
+        return res.status(200).json({
+            success: true,
+            message: "Notification successfully deleted.",
+            notification: notificationId
+        });
+
+    } catch (err) {
+        console.error("[NOTIFICATION] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error deleting notification",
+            error: err.message
+        });
     }
 };

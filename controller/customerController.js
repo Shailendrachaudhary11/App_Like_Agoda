@@ -1115,12 +1115,20 @@ exports.cancelBooking = async (req, res) => {
 
         // Fetch the booking
         const booking = await Booking.findOne({ _id: id, customer: customerId });
-
         if (!booking) {
             return res.status(404).json({
                 success: false,
                 message: `Booking with ID ${id} not found.`
             });
+        }
+
+        const today = new Date();
+
+        if(new Date(booking.checkOut)< today){
+            return res.status(400).json({
+                success: false,
+                message: "Cannot cancel booking. Stay period is already completed."
+            })
         }
 
         // Only allow cancel if status is pending or confirmed

@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
 const createNotification = require("../utils/notificationHelper");
+const Admin = require("../models/adminUser")
 
 // ----------------- register ----------------
 exports.register = async (req, res) => {
@@ -56,6 +57,25 @@ exports.register = async (req, res) => {
         if (role === "customer") {
             newUser.status = "approved";
         }
+
+        if (role === "guesthouse") {
+            const masterAdmin = await Admin.findOne({ role: "admin" });
+
+            if (masterAdmin) {
+                await createNotification(
+                    { userId: newUser._id, role: "guesthouse" }, // sender = new guesthouse
+                    { userId: masterAdmin._id, role: "admin" }, // receiver = system admin
+                    "New Guesthouse Registration",
+                    `Guesthouse "${newUser.name}" has registered and is waiting for approval.`,
+                    "system",
+                    { guesthouseId: newUser._id }
+                );
+                console.log("Notification send")
+            } else {
+                console.warn("[NOTIFICATION] No master admin found in DB.");
+            }
+        }
+
 
         await newUser.save();
 

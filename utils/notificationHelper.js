@@ -11,6 +11,7 @@ const createNotification = async (sender, receiver, title, message, type="genera
       metadata
     });
     await notification.save();
+    console.log("notification send")
     return notification;
   } catch (err) {
     console.error("[NOTIFICATION ERROR]", err.message);

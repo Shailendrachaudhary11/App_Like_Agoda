@@ -8,29 +8,21 @@ const upload = require("../middlewares/upload");
 
 // register route
 router.post("/register", upload.single('adminImage'), registerValidation, validateRequest, adminController.register);
-
-// login
 router.post('/login', adminController.login);
-
-// get my profile
 router.get("/viewProfile", auth(["admin"]), adminController.getProfile);
-
-// update profile
-router.put("/updateProfile", auth(["admin"]),upload.single('adminImage'), adminController.updateProfile);
-
-// changePassword
+router.put("/updateProfile", auth(["admin"]), upload.single('adminImage'), adminController.updateProfile);
 router.put("/changePassword", auth(["admin"]), adminController.changePassword);
 
 // Guesthouse Management
+router.get("/guesthouses", auth(["admin"]), adminController.getAllGuestHouses);
+router.get("/guesthouses/pendingRegistration", auth(["admin"]), adminController.getPendingRegistration);
+router.post("/guesthouses/:id/update", upload.array("guestHouseImage", 5), auth(["admin"]), adminController.updateGuestHouse);
 router.get("/guesthouses/owners", auth(["admin"]), adminController.getAllGuestOwner);
 router.get("/guesthouses/:id", auth(["admin"]), adminController.getGuestHousesById);
 router.get("/guesthouses/owners/:id", auth(["admin"]), adminController.getGuestOwnerById);
-router.get("/guesthouses", auth(["admin"]), adminController.getAllGuestHouses);
-router.get("/guesthouses/:status", auth(["admin"]), adminController.getGuesthouses);
 
 router.put("/guesthouses/:id/approve", auth(["admin"]), adminController.approveGuesthouse);
 router.put("/guesthouses/:id/reject", auth(["admin"]), adminController.rejectGuesthouse);
-router.put("/guesthouses/:id", upload.array("guestHouseImage", 10), auth(["admin"]), adminController.updateGuestHouse);
 router.put("/guesthouses/:id/active", auth(["admin"]), adminController.activeInactiveGuesthouse);
 
 // Room Management
@@ -42,14 +34,15 @@ router.delete("/rooms/:id", auth(["admin"]), adminController.deleteRoom);
 // Customer Management
 router.get("/customers", auth(["admin"]), adminController.getAllCustomer);
 router.get("/customers/:id", auth(["admin"]), adminController.getCustomerById);
-// router.put("/customers/:id/approve", auth(["admin"]), adminController.approvalCustomer);
-// router.put("/customers/:id/reject", auth(["admin"]), adminController.rejectCustomer);
-router.put("/customers/:id/suspend", auth(["admin"]), adminController.suspendedCustomer);
-router.put("/customers/:id/activate", auth(["admin"]), adminController.activateCustomer);
+router.put("/customers/:id/active", auth(["admin"]), adminController.suspendedApproveCustomer);
+
 
 // Booking Management
 router.get("/bookings", auth(["admin"]), adminController.getAllBooking);
-router.get("/bookings/:id", auth(["admin"]), adminController.getBookingById );
+router.get("/bookings/past", auth(["admin"]), adminController.pastBooking);
+router.get("/bookings/upcoming", auth(["admin"]), adminController.upcomingBookings);
+router.get("/bookings/:id", auth(["admin"]), adminController.getBookingById);
+
 
 // promos
 router.get("/promos", auth(["admin"]), adminController.getAllPromo);
@@ -58,9 +51,10 @@ router.get("/promos/:id", auth(["admin"]), adminController.getPromoById);
 router.put("/promos/:id", auth(["admin"]), adminController.updatePromo);
 router.delete("/promos/:id", auth(["admin"]), adminController.deletePromo);
 
-
-//
-router.get
+// notifications
+router.get("/notifications", auth(["admin"]), adminController.getAllNotification);
+router.put("/notifications/:notificationId/read", auth(["admin"]), adminController.readNotification);
+router.delete("/notifications/:notificationId/delete", auth(["admin"]), adminController.deleteNotification);
 
 
 module.exports = router;

@@ -6,7 +6,7 @@ const notificationSchema = new mongoose.Schema(
       userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // किसने भेजा
       role: {
         type: String,
-        enum: ["customer", "guesthouse", "master_admin"],
+        enum: ["customer", "guesthouse", "admin"],
         required: true,
       },
     },
@@ -14,7 +14,7 @@ const notificationSchema = new mongoose.Schema(
       userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // किसको भेजा
       role: {
         type: String,
-        enum: ["customer", "guesthouse", "master_admin"],
+        enum: ["customer", "guesthouse", "admin"],
         required: true,
       },
     },
