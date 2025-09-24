@@ -21,8 +21,8 @@ router.get("/guesthouses/owners", auth(["admin"]), adminController.getAllGuestOw
 router.get("/guesthouses/:id", auth(["admin"]), adminController.getGuestHousesById);
 router.get("/guesthouses/owners/:id", auth(["admin"]), adminController.getGuestOwnerById);
 
-router.put("/guesthouses/:id/approve", auth(["admin"]), adminController.approveGuesthouse);
-router.put("/guesthouses/:id/reject", auth(["admin"]), adminController.rejectGuesthouse);
+router.put("/guesthouses/:id/approve", auth(["admin"]), adminController.approveGuesthouseRegistration);
+router.put("/guesthouses/:id/reject", auth(["admin"]), adminController.rejectGuesthouseRegistration);
 router.put("/guesthouses/:id/active", auth(["admin"]), adminController.activeInactiveGuesthouse);
 
 // Room Management

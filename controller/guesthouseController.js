@@ -1,7 +1,5 @@
 const Guesthouse = require("../models/Guesthouse");
 const Room = require("../models/Room");
-const fs = require("fs");
-const path = require("path");
 const Booking = require("../models/Booking")
 const Review = require("../models/review")
 const Notification = require("../models/notification");
@@ -10,6 +8,7 @@ const User = require("../models/user")
 
 const baseUrl = process.env.BASE_URL;
 
+// -------------------------------- GUESTHOUSE --------------------------------
 exports.manageGuestHouse = async (req, res) => {
     try {
         const ownerId = req.user._id;
@@ -137,6 +136,7 @@ exports.getMyGuesthouse = async (req, res) => {
     }
 };
 
+// -------------------------------- ROOM --------------------------------
 exports.addRoom = async (req, res) => {
     try {
         const ownerId = req.user.id;
@@ -505,6 +505,7 @@ exports.getDisableRooms = async (req, res) => {
     }
 };
 
+// -------------------------------- BOOKING --------------------------------
 exports.getAllBookings = async (req, res) => {
     try {
         const user = req.user;
@@ -766,45 +767,7 @@ exports.getPastBookings = async (req, res) => {
     }
 };
 
-// exports.getConfirmedBooking = async (req, res) => {
-//     try {
-//         const guesthouseOwnerId = req.user.id;
-
-//         const guesthouse = await Guesthouse.findOne({ owner: guesthouseOwnerId });
-
-//         if (!guesthouse) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "Guesthouse not found for this owner."
-//             });
-//         }
-
-//         const guesthouseId = guesthouse._id;
-//         const bookings = await Booking.find({ guesthouse: guesthouseId, status: "confirmed" });
-
-//         if (!bookings || bookings.length === 0) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "No confirmed bookings found."
-//             });
-//         }
-
-//         // Return the confirmed bookings
-//         res.status(200).json({
-//             success: true,
-//             count: bookings.length,
-//             data: bookings
-//         });
-
-//     } catch (error) {
-//         res.status(500).json({
-//             success: false,
-//             message: "Error fetching confirmed bookings.",
-//             error: error
-//         })
-//     }
-// }
-
+// -------------------------------- REVIEWS --------------------------------
 exports.getAllReviews = async (req, res) => {
     try {
         const userId = req.user._id; // assuming JWT middleware sets req.user
@@ -915,6 +878,7 @@ exports.getReviewByRoomId = async (req, res) => {
     }
 }
 
+// -------------------------------- NOTIFICATION --------------------------------
 exports.getAllNotification = async (req, res) => {
     try {
         const guestHouseOwnerId = req.user.id;
@@ -1092,6 +1056,7 @@ exports.unreadNotification = async (req, res) => {
     }
 }
 
+// -------------------------------- TOTAL REVENUE --------------------------------
 exports.totalRevenue = async (req, res) => {
     try {
         // Fetch all paid bookings

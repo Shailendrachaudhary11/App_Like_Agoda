@@ -8,6 +8,7 @@ const User = require("../models/user")
 const Booking = require("../models/Booking")
 const Notification = require("../models/notification")
 const createNotification = require("../utils/notificationHelper");
+const sendEmail = require("../utils/sendEmail")
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -83,7 +84,7 @@ exports.login = async (req, res) => {
         }
 
         // Find admin user by email (case-insensitive)
-        const adminUser = await AdminUser.findOne({ email: email.toLowerCase() });
+        const adminUser = await AdminUser.findOne({ email: email.toLowerCase() }).lean();
         if (!adminUser) {
             console.log("Admin not found:", email);
             return res.status(401).json({
@@ -769,7 +770,7 @@ exports.activeInactiveGuesthouse = async (req, res) => {
     }
 };
 
-exports.approveGuesthouse = async (req, res) => {
+exports.approveGuesthouseRegistration = async (req, res) => {
     try {
         const { id: guesthouseId } = req.params;
         if (!guesthouseId) {
@@ -806,15 +807,36 @@ exports.approveGuesthouse = async (req, res) => {
 
         console.log(`[GUESTHOUSE] Registration approved: ${guesthouseId}`);
 
-        await createNotification(
-            { userId: req.user.id, role: req.user.role },   // sender (admin)
-            { userId: guesthouseUser._id, role: "guesthouse" }, // receiver (guesthouse user)
-            "Guesthouse Approved",
-            `${guesthouseUser.name}, your registration has been approved.`,
-            "system",
-            { guesthouseId: guesthouseUser._id }
+        // email send for approval regiatration via email
+
+        const emailSent = await sendEmail(
+            guesthouseUser.email,
+            ` Congratulations! Your Guesthouse Registration is Approved `,
+
+            `Dear ${guesthouseUser.name},
+
+                    We are pleased to inform you that your guesthouse registration has been successfully approved.  
+                    You can now log in to your account and proceed with the next steps to manage your guesthouse.
+                        
+                    Here are your registered details:
+                    - Owner Name: ${guesthouseUser.name}
+                    - Email: ${guesthouseUser.email}
+                    - Phone: ${guesthouseUser.phone}
+                        
+                      Next Steps:
+                    1. Login to your account using your registered email.
+                    2. Complete your guesthouse profile (add images, amenities, pricing, etc.).
+                    3. Start managing your rooms, availability, and bookings.
+                        
+                    If you face any issues, feel free to reach out to our support team.
+                        
+                        
+                    Best Regards,  
+                    Team Guesthouse Management`
         );
-        console.log(`[GUESTHOUSE] Notification sent to owner: ${guesthouseUser._id}`);
+
+
+        if (!emailSent) return res.status(500).json({ success: false, message: "registrtaion notification not send." });
 
         return res.status(200).json({
             success: true,
@@ -838,7 +860,7 @@ exports.approveGuesthouse = async (req, res) => {
     }
 };
 
-exports.rejectGuesthouse = async (req, res) => {
+exports.rejectGuesthouseRegistration = async (req, res) => {
     try {
         const { id } = req.params;
         console.log("Rejecting guesthouse registration:", id);
@@ -868,13 +890,32 @@ exports.rejectGuesthouse = async (req, res) => {
 
         await guesthouseUser.save();
 
-        // await createNotification(
-        //     guesthouseUser._id,
-        //     "general",
-        //     `Your guesthouse "${guesthouseUser.name}" has been reject by admin.`,
-        //     { guesthouseUser: guesthouseUser._id }
-        // );
-        // console.log("Notification sent to owner:", guesthouseUser._id);
+        // email send to registration email for reject registration
+        await sendEmail(
+            guesthouseUser.email,
+            `Guesthouse Registration Update`,
+
+            `Dear ${guesthouseUser.name},
+
+                We regret to inform you that your guesthouse registration has been reject at this time.  
+                This may be due to incomplete information, verification issues, or other reasons specified in your application.
+                        
+                Here are your submitted details:
+                - Owner Name: ${guesthouseUser.name}
+                - Email: ${guesthouseUser.email}
+                - Phone: ${guesthouseUser.phone}
+                        
+                 Next Steps:
+                1. Review the details you submitted and ensure all required information is complete and accurate.
+                2. Correct any discrepancies and submit a new application if applicable.
+                3. Contact our support team for further assistance or clarification regarding your application.
+                        
+                We appreciate your interest in joining our platform and encourage you to reapply after resolving the issues.
+                        
+                Best Regards,  
+                Team Guesthouse Management`
+        );
+
 
         console.log("Guesthouse registration rejected:", id);
         return res.status(200).json({
@@ -1156,84 +1197,84 @@ exports.getCustomerById = async (req, res) => {
     }
 };
 
-exports.approvalCustomer = async (req, res) => {
-    try {
-        const { id } = req.params;
+// exports.approvalCustomer = async (req, res) => {
+//     try {
+//         const { id } = req.params;
 
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found."
-            });
-        }
+//         const user = await User.findById(id);
+//         if (!user) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "User not found."
+//             });
+//         }
 
-        user.status = "approved";
-        await createNotification(
-            user._id,
-            "general",
-            `Your customer registration "${user.name}" has been approved by admin.`,
-            { user: user._id }
-        );
-        await user.save();
+//         user.status = "approved";
+//         await createNotification(
+//             user._id,
+//             "general",
+//             `Your customer registration "${user.name}" has been approved by admin.`,
+//             { user: user._id }
+//         );
+//         await user.save();
 
-        return res.status(200).json({
-            success: true,
-            message: "customer approved successfully.",
-            userId: user._id,
-            role: user.role
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Failed to approve user.",
-            error: err.message
-        });
-    }
-};
+//         return res.status(200).json({
+//             success: true,
+//             message: "customer approved successfully.",
+//             userId: user._id,
+//             role: user.role
+//         });
+//     } catch (err) {
+//         return res.status(500).json({
+//             success: false,
+//             message: "Failed to approve user.",
+//             error: err.message
+//         });
+//     }
+// };
 
-exports.rejectCustomer = async (req, res) => {
-    try {
-        const { id } = req.params;
+// exports.rejectCustomer = async (req, res) => {
+//     try {
+//         const { id } = req.params;
 
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found."
-            });
-        }
+//         const user = await User.findById(id);
+//         if (!user) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "User not found."
+//             });
+//         }
 
-        if (user.status === "reject") {
-            return res.status(200).json({
-                success: true,
-                message: "Customer is already reject.",
-                data: {
-                    id: user._id,
-                    name: user.name,
-                    ownerName: user.owner?.name,
-                    ownerEmail: user.owner?.email,
-                    status: user.status
-                }
-            });
-        }
-        user.status = "reject";
+//         if (user.status === "reject") {
+//             return res.status(200).json({
+//                 success: true,
+//                 message: "Customer is already reject.",
+//                 data: {
+//                     id: user._id,
+//                     name: user.name,
+//                     ownerName: user.owner?.name,
+//                     ownerEmail: user.owner?.email,
+//                     status: user.status
+//                 }
+//             });
+//         }
+//         user.status = "reject";
 
-        user.save();
-        return res.status(200).json({
-            success: true,
-            message: "User rejected successfully.",
-            userId: user._id,
-            role: user.role
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Failed to reject user.",
-            error: err.message
-        });
-    }
-};
+//         user.save();
+//         return res.status(200).json({
+//             success: true,
+//             message: "User rejected successfully.",
+//             userId: user._id,
+//             role: user.role
+//         });
+//     } catch (err) {
+//         return res.status(500).json({
+//             success: false,
+//             message: "Failed to reject user.",
+//             error: err.message
+//         });
+//     }
+// };
 
 exports.suspendedApproveCustomer = async (req, res) => {
     try {
@@ -1403,7 +1444,7 @@ exports.upcomingBookings = async (req, res) => {
     }
 }
 
-// Get all promos
+// -------------------------------------------- PROMOS ---------------------------------------
 exports.getAllPromo = async (req, res) => {
     try {
         const promos = await Promo.find();
@@ -1421,7 +1462,6 @@ exports.getAllPromo = async (req, res) => {
     }
 };
 
-// create Promo
 exports.createPromo = async (req, res) => {
     try {
         const { code, discountType, discountValue, startDate, endDate, maxUsage } = req.body;
@@ -1483,7 +1523,6 @@ exports.createPromo = async (req, res) => {
     }
 };
 
-// Get promo by id
 exports.getPromoById = async (req, res) => {
     try {
         const promo = await Promo.findById(req.params.id);
@@ -1501,7 +1540,6 @@ exports.getPromoById = async (req, res) => {
     }
 };
 
-// Update promo
 exports.updatePromo = async (req, res) => {
     try {
         const promo = await Promo.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -1512,7 +1550,6 @@ exports.updatePromo = async (req, res) => {
     }
 };
 
-// Delete promo
 exports.deletePromo = async (req, res) => {
     try {
         const promo = await Promo.findByIdAndDelete(req.params.id);
@@ -1523,6 +1560,7 @@ exports.deletePromo = async (req, res) => {
     }
 };
 
+// -------------------------------------------- NOTIFICATION ---------------------------------------
 exports.getAllNotification = async (req, res) => {
     try {
         const adminId = req.user.id;

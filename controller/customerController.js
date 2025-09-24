@@ -9,6 +9,7 @@ const createNotification = require("../utils/notificationHelper");
 
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
+// -------------------------------------------- GUESTHOUSE  ---------------------------------------
 exports.getAllGuestHouses = async (req, res) => {
     try {
 
@@ -156,6 +157,7 @@ exports.searchGuestHouseNearBy = async (req, res) => {
     }
 };
 
+// -------------------------------------------- ROOMS ---------------------------------------
 exports.getRoomById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -300,494 +302,7 @@ exports.searchRooms = async (req, res) => {
     }
 };
 
-exports.addReviewAndRating = async (req, res) => {
-    try {
-        const { guestHouseId, roomId, rating, comment } = req.body;
-
-        //  Guesthouse check
-        const guestHouse = await Guesthouse.findById(guestHouseId);
-        if (!guestHouse) {
-            return res.status(404).json({
-                success: false,
-                message: "No GuestHouse found."
-            });
-        }
-
-        const rooms = await Room.findOne({ _id: roomId, guesthouse: guestHouseId })
-        if (!rooms) {
-            return res.status(404).json({
-                success: true,
-                message: "No room found in given guesthouse."
-            })
-        }
-
-        //  User info from JWT
-        const user = req.user; // middleware se aata h
-        const customerId = user.id;
-
-        // Review object create
-        const review = new Review({
-            guesthouse: guestHouseId,
-            room: roomId,
-            customer: customerId,
-            rating,
-            comment
-        });
-
-        //  Save review
-        await review.save();
-
-        return res.status(201).json({
-            success: true,
-            message: "Review added successfully",
-            review
-        });
-
-    } catch (err) {
-        console.error("Add Review Error:", err);
-        res.status(500).json({
-            success: false,
-            message: "Server error",
-            error: err.message
-        });
-    }
-};
-
-exports.getAllReviews = async (req, res) => {
-    try {
-
-        const userId = req.user.id;
-
-        const reviews = await Review.find({ customer: userId })
-            .populate("customer", "name email")
-            .populate("guesthouse", "name address")
-            .populate("room", "roomNumber")
-            .sort({ createdAt: -1 }); // latest first
-
-        if (!reviews || reviews.length === 0) {
-            return res.status(404).json({
-                success: true,
-                message: "No reviews found.",
-                count: 0,
-                data: []
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "Reviews fetched successfully.",
-            count: reviews.length,
-            data: reviews
-        });
-
-    } catch (err) {
-        console.error("[REVIEW] Error fetching reviews:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Error fetching reviews list.",
-            error: err.message
-        });
-    }
-};
-
-exports.getReviewByGuestHouse = async (req, res) => {
-    try {
-        const { id } = req.params; // guesthouseId from route
-
-        // Get all reviews of guesthouse
-        const reviews = await Review.find({ guesthouse: id })
-            .populate("customer", "name email")
-            .populate("room", "roomNumber")
-            .sort({ createdAt: -1 })
-            .lean();
-
-        if (!reviews || reviews.length === 0) {
-            return res.status(404).json({
-                success: true,
-                message: `No reviews found for guesthouse ${id}`,
-                count: 0,
-                data: []
-            });
-        }
-
-        // Average rating calculation
-        const avgRating =
-            reviews.reduce((acc, r) => acc + (r.rating || 0), 0) /
-            reviews.length;
-
-        return res.status(200).json({
-            success: true,
-            message: `Reviews fetched for guesthouse ${id}`,
-            count: reviews.length,
-            averageRating: avgRating.toFixed(1),
-            data: reviews
-        });
-
-    } catch (err) {
-        console.error("[REVIEW] Error fetching guesthouse reviews:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Error fetching guesthouse reviews.",
-            error: err.message
-        });
-    }
-};
-
-exports.getReviewByRoom = async (req, res) => {
-    try {
-        const { id } = req.params; // roomId from route
-
-        const room = await Room.findById(id);
-        if (!room) {
-            return res.status(404).json({
-                success: false,
-                message: "Room not found."
-            });
-        }
-
-        const reviews = await Review.find({ room: id })
-            .populate("customer", "name email")
-            .sort({ createdAt: -1 })
-            .lean();
-
-        if (!reviews || reviews.length === 0) {
-            return res.status(404).json({
-                success: true,
-                message: `No reviews found for room ${id}`,
-                count: 0,
-                data: []
-            });
-        }
-
-        // Average rating
-        const avgRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0) / reviews.length;
-
-        return res.status(200).json({
-            success: true,
-            message: `Reviews fetched for room ${id}`,
-            count: reviews.length,
-            averageRating: avgRating.toFixed(1),
-            data: reviews
-        });
-
-    } catch (err) {
-        console.error("[REVIEW] Error fetching room reviews:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Error fetching room reviews.",
-            error: err.message
-        });
-    }
-};
-
-exports.getAllPromos = async (req, res) => {
-    try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // only date part
-
-        const promos = await Promo.find({
-            isActive: true,
-            endDate: { $gte: today }
-        }).sort({ createdAt: -1 });
-
-        if (!promos || promos.length === 0) {
-            return res.status(404).json({
-                success: true,
-                message: "No active promo codes found.",
-                NoOfPromos: 0,
-                data: []
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            message: "Active promo codes fetched successfully.",
-            count: promos.length,
-            data: promos
-        });
-
-    } catch (err) {
-        console.error("[PROMO] Error fetching promos:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Error fetching promos.",
-            error: err.message
-        });
-    }
-};
-
-exports.getPromoById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // only date part
-
-        const promo = await Promo.findOne({
-            _id: id,
-            isActive: true,
-            endDate: { $gte: today }
-        })
-
-        if (!promo || promo.length === 0) {
-            return res.status(404).json({
-                success: true,
-                message: "No active promo code found.",
-                data: []
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            message: "Active promo code fetched successfully.",
-            data: promo
-        });
-
-    } catch (err) {
-        console.error("[PROMO] Error fetching promo:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Error fetching promo.",
-            error: err.message
-        });
-    }
-}
-
-exports.getAllNotification = async (req, res) => {
-    try {
-        const customerId = req.user.id;
-
-        // Fetch notifications, latest first
-        const notifications = await Notification.find({
-            "receiver.userId": customerId,
-            "receiver.role": "customer",
-        })
-            .sort({ createdAt: -1 }) // latest first
-            .lean();
-
-        if (!notifications || notifications.length === 0) {
-            return res.status(200).json({
-                success: true,
-                statusCode: 200,
-                message: "No notifications found.",
-                count: 0,
-                data: []
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            statusCode: 200,
-            message: "Notifications fetched successfully.",
-            count: notifications.length,
-            data: notifications
-        });
-
-    } catch (error) {
-        console.error("[NOTIFICATION] Error fetching notifications:", error);
-        return res.status(500).json({
-            success: false,
-            statusCode: 500,
-            message: "Error fetching notifications.",
-            error: error.message
-        });
-    }
-};
-
-exports.readNotification = async (req, res) => {
-    try {
-        const { notificationId } = req.params;
-        const customerId = req.user.id;
-
-        //  Await जरूरी है
-        const notification = await Notification.findOne({
-            _id: notificationId,
-            "receiver.userId": customerId,
-        });
-
-        if (!notification) {
-            return res.status(404).json({
-                success: false,
-                message: "No Notification found."
-            });
-        }
-
-        //  Mark as read
-        notification.isRead = true;
-        await notification.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Notification marked as read",
-            data: notification
-        });
-
-    } catch (err) {
-        console.error("[NOTIFICATION] Error:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Error updating notification",
-            error: err.message
-        });
-    }
-};
-
-exports.deleteNotification = async (req, res) => {
-    try {
-        const { notificationId } = req.params;
-        const customerId = req.user.id;
-
-        //  Await जरूरी है
-        const notification = await Notification.findOne({
-            _id: notificationId,
-            "receiver.userId": customerId,
-        });
-
-        if (!notification) {
-            return res.status(404).json({
-                success: false,
-                message: "No Notification found."
-            });
-        }
-
-        await notification.deleteOne();
-
-        return res.status(200).json({
-            success: true,
-            message: "Notification successfully deleted.",
-            notification: notificationId
-        });
-
-    } catch (err) {
-        console.error("[NOTIFICATION] Error:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Error deleting notification",
-            error: err.message
-        });
-    }
-};
-
-exports.getfavorites = async (req, res) => {
-    try {
-        const customerId = req.user.id;
-        const favorites = await Favorites.find({ customer: customerId }).populate("room", "roomNumber guesthouse");
-        if (!favorites || favorites.length === 0) {
-            res.status(200).json({
-                success: true,
-                message: "No favorite guesthouse found.",
-                data: []
-            })
-        }
-        return res.status(200).json({
-            success: true,
-            message: "Favorite rooms fetched successfully.",
-            count: favorites.length,
-            data: favorites,
-        });
-    } catch (err) {
-        console.error("Error in getFavorites:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch favorites",
-            error: err.message,
-        });
-    }
-
-}
-
-exports.addFavorites = async (req, res) => {
-    try {
-        const roomId = req.params.id; // get from URL params
-        const userId = req.user.id;
-
-        if (!roomId) {
-            return res.status(400).json({
-                success: false,
-                message: "room ID is required.",
-            });
-        }
-
-        // Optional: check if guesthouse exists
-        const room = await Room.findById(roomId);
-        if (!room) {
-            return res.status(404).json({
-                success: false,
-                message: "room not found.",
-            });
-        }
-
-        // Check if already favorited
-        const existingFavorite = await Favorites.findOne({ customer: userId, room: roomId });
-        if (existingFavorite) {
-            return res.status(400).json({
-                success: false,
-                message: "room is already in favorites.",
-            });
-        }
-
-        // Add to favorites
-        const favorite = new Favorites({
-            customer: userId,
-            room: roomId,
-        });
-        await favorite.save();
-
-        return res.status(201).json({
-            success: true,
-            message: `room ${roomId} successfully added to favorites.`,
-            data: favorite,
-        });
-
-    } catch (error) {
-        console.error("Error adding room to favorites:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to add room to favorites.",
-            error: error.message,
-        });
-    }
-};
-
-exports.removeFavorite = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const customerId = req.user.id;
-
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "ID is required.",
-            });
-        }
-
-        const favorite = await Favorites.findOne({ customer: customerId, _id: id });
-
-        if (!favorite) {
-            return res.status(404).json({
-                success: false,
-                message: "no favorite found.",
-            });
-        }
-
-        await favorite.deleteOne({ _id: id });
-
-        return res.status(200).json({
-            success: true,
-            message: "Removed from favorites successfully.",
-        });
-
-    } catch (error) {
-        console.error("Error removing from favorites:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to remove from favorites.",
-            error: error.message,
-        });
-    }
-};
-
-// ---------------------------------- Booking part --------------------------------------
-
+// -------------------------------------------- BOOKING --------------------------------------
 exports.createBooking = async (req, res) => {
     try {
         const { guesthouseId, roomId, checkIn, checkOut, promoCode } = req.body;
@@ -1124,7 +639,7 @@ exports.cancelBooking = async (req, res) => {
 
         const today = new Date();
 
-        if(new Date(booking.checkOut)< today){
+        if (new Date(booking.checkOut) < today) {
             return res.status(400).json({
                 success: false,
                 message: "Cannot cancel booking. Stay period is already completed."
@@ -1324,6 +839,498 @@ exports.getCancelBookings = async (req, res) => {
         });
     }
 };
+
+// -------------------------------------------- REVIEWS ---------------------------------------
+exports.addReviewAndRating = async (req, res) => {
+    try {
+        const { guestHouseId, roomId, rating, comment } = req.body;
+
+        //  Guesthouse check
+        const guestHouse = await Guesthouse.findById(guestHouseId);
+        if (!guestHouse) {
+            return res.status(404).json({
+                success: false,
+                message: "No GuestHouse found."
+            });
+        }
+
+        const rooms = await Room.findOne({ _id: roomId, guesthouse: guestHouseId })
+        if (!rooms) {
+            return res.status(404).json({
+                success: true,
+                message: "No room found in given guesthouse."
+            })
+        }
+
+        //  User info from JWT
+        const user = req.user; // middleware se aata h
+        const customerId = user.id;
+
+        // Review object create
+        const review = new Review({
+            guesthouse: guestHouseId,
+            room: roomId,
+            customer: customerId,
+            rating,
+            comment
+        });
+
+        //  Save review
+        await review.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Review added successfully",
+            review
+        });
+
+    } catch (err) {
+        console.error("Add Review Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+exports.getAllReviews = async (req, res) => {
+    try {
+
+        const userId = req.user.id;
+
+        const reviews = await Review.find({ customer: userId })
+            .populate("customer", "name email")
+            .populate("guesthouse", "name address")
+            .populate("room", "roomNumber")
+            .sort({ createdAt: -1 }); // latest first
+
+        if (!reviews || reviews.length === 0) {
+            return res.status(404).json({
+                success: true,
+                message: "No reviews found.",
+                count: 0,
+                data: []
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Reviews fetched successfully.",
+            count: reviews.length,
+            data: reviews
+        });
+
+    } catch (err) {
+        console.error("[REVIEW] Error fetching reviews:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching reviews list.",
+            error: err.message
+        });
+    }
+};
+
+exports.getReviewByGuestHouse = async (req, res) => {
+    try {
+        const { id } = req.params; // guesthouseId from route
+
+        // Get all reviews of guesthouse
+        const reviews = await Review.find({ guesthouse: id })
+            .populate("customer", "name email")
+            .populate("room", "roomNumber")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (!reviews || reviews.length === 0) {
+            return res.status(404).json({
+                success: true,
+                message: `No reviews found for guesthouse ${id}`,
+                count: 0,
+                data: []
+            });
+        }
+
+        // Average rating calculation
+        const avgRating =
+            reviews.reduce((acc, r) => acc + (r.rating || 0), 0) /
+            reviews.length;
+
+        return res.status(200).json({
+            success: true,
+            message: `Reviews fetched for guesthouse ${id}`,
+            count: reviews.length,
+            averageRating: avgRating.toFixed(1),
+            data: reviews
+        });
+
+    } catch (err) {
+        console.error("[REVIEW] Error fetching guesthouse reviews:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching guesthouse reviews.",
+            error: err.message
+        });
+    }
+};
+
+exports.getReviewByRoom = async (req, res) => {
+    try {
+        const { id } = req.params; // roomId from route
+
+        const room = await Room.findById(id);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: "Room not found."
+            });
+        }
+
+        const reviews = await Review.find({ room: id })
+            .populate("customer", "name email")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (!reviews || reviews.length === 0) {
+            return res.status(404).json({
+                success: true,
+                message: `No reviews found for room ${id}`,
+                count: 0,
+                data: []
+            });
+        }
+
+        // Average rating
+        const avgRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0) / reviews.length;
+
+        return res.status(200).json({
+            success: true,
+            message: `Reviews fetched for room ${id}`,
+            count: reviews.length,
+            averageRating: avgRating.toFixed(1),
+            data: reviews
+        });
+
+    } catch (err) {
+        console.error("[REVIEW] Error fetching room reviews:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching room reviews.",
+            error: err.message
+        });
+    }
+};
+
+// -------------------------------------------- PROMOS ---------------------------------------
+exports.getAllPromos = async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // only date part
+
+        const promos = await Promo.find({
+            isActive: true,
+            endDate: { $gte: today }
+        }).sort({ createdAt: -1 });
+
+        if (!promos || promos.length === 0) {
+            return res.status(404).json({
+                success: true,
+                message: "No active promo codes found.",
+                NoOfPromos: 0,
+                data: []
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Active promo codes fetched successfully.",
+            count: promos.length,
+            data: promos
+        });
+
+    } catch (err) {
+        console.error("[PROMO] Error fetching promos:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching promos.",
+            error: err.message
+        });
+    }
+};
+
+exports.getPromoById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // only date part
+
+        const promo = await Promo.findOne({
+            _id: id,
+            isActive: true,
+            endDate: { $gte: today }
+        })
+
+        if (!promo || promo.length === 0) {
+            return res.status(404).json({
+                success: true,
+                message: "No active promo code found.",
+                data: []
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Active promo code fetched successfully.",
+            data: promo
+        });
+
+    } catch (err) {
+        console.error("[PROMO] Error fetching promo:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching promo.",
+            error: err.message
+        });
+    }
+}
+
+// -------------------------------------------- NOTIFICATION ---------------------------------------
+exports.getAllNotification = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+
+        // Fetch notifications, latest first
+        const notifications = await Notification.find({
+            "receiver.userId": customerId,
+            "receiver.role": "customer",
+        })
+            .sort({ createdAt: -1 }) // latest first
+            .lean();
+
+        if (!notifications || notifications.length === 0) {
+            return res.status(200).json({
+                success: true,
+                statusCode: 200,
+                message: "No notifications found.",
+                count: 0,
+                data: []
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            statusCode: 200,
+            message: "Notifications fetched successfully.",
+            count: notifications.length,
+            data: notifications
+        });
+
+    } catch (error) {
+        console.error("[NOTIFICATION] Error fetching notifications:", error);
+        return res.status(500).json({
+            success: false,
+            statusCode: 500,
+            message: "Error fetching notifications.",
+            error: error.message
+        });
+    }
+};
+
+exports.readNotification = async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const customerId = req.user.id;
+
+        //  Await जरूरी है
+        const notification = await Notification.findOne({
+            _id: notificationId,
+            "receiver.userId": customerId,
+        });
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: "No Notification found."
+            });
+        }
+
+        //  Mark as read
+        notification.isRead = true;
+        await notification.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Notification marked as read",
+            data: notification
+        });
+
+    } catch (err) {
+        console.error("[NOTIFICATION] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error updating notification",
+            error: err.message
+        });
+    }
+};
+
+exports.deleteNotification = async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const customerId = req.user.id;
+
+        //  Await जरूरी है
+        const notification = await Notification.findOne({
+            _id: notificationId,
+            "receiver.userId": customerId,
+        });
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: "No Notification found."
+            });
+        }
+
+        await notification.deleteOne();
+
+        return res.status(200).json({
+            success: true,
+            message: "Notification successfully deleted.",
+            notification: notificationId
+        });
+
+    } catch (err) {
+        console.error("[NOTIFICATION] Error:", err.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error deleting notification",
+            error: err.message
+        });
+    }
+};
+
+// -------------------------------------------- FAVOURITE ---------------------------------------
+exports.getfavorites = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+        const favorites = await Favorites.find({ customer: customerId }).populate("room", "roomNumber guesthouse");
+        if (!favorites || favorites.length === 0) {
+            res.status(200).json({
+                success: true,
+                message: "No favorite guesthouse found.",
+                data: []
+            })
+        }
+        return res.status(200).json({
+            success: true,
+            message: "Favorite rooms fetched successfully.",
+            count: favorites.length,
+            data: favorites,
+        });
+    } catch (err) {
+        console.error("Error in getFavorites:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch favorites",
+            error: err.message,
+        });
+    }
+
+}
+
+exports.addFavorites = async (req, res) => {
+    try {
+        const roomId = req.params.id; // get from URL params
+        const userId = req.user.id;
+
+        if (!roomId) {
+            return res.status(400).json({
+                success: false,
+                message: "room ID is required.",
+            });
+        }
+
+        // Optional: check if guesthouse exists
+        const room = await Room.findById(roomId);
+        if (!room) {
+            return res.status(404).json({
+                success: false,
+                message: "room not found.",
+            });
+        }
+
+        // Check if already favorited
+        const existingFavorite = await Favorites.findOne({ customer: userId, room: roomId });
+        if (existingFavorite) {
+            return res.status(400).json({
+                success: false,
+                message: "room is already in favorites.",
+            });
+        }
+
+        // Add to favorites
+        const favorite = new Favorites({
+            customer: userId,
+            room: roomId,
+        });
+        await favorite.save();
+
+        return res.status(201).json({
+            success: true,
+            message: `room ${roomId} successfully added to favorites.`,
+            data: favorite,
+        });
+
+    } catch (error) {
+        console.error("Error adding room to favorites:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to add room to favorites.",
+            error: error.message,
+        });
+    }
+};
+
+exports.removeFavorite = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const customerId = req.user.id;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "ID is required.",
+            });
+        }
+
+        const favorite = await Favorites.findOne({ customer: customerId, _id: id });
+
+        if (!favorite) {
+            return res.status(404).json({
+                success: false,
+                message: "no favorite found.",
+            });
+        }
+
+        await favorite.deleteOne({ _id: id });
+
+        return res.status(200).json({
+            success: true,
+            message: "Removed from favorites successfully.",
+        });
+
+    } catch (error) {
+        console.error("Error removing from favorites:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to remove from favorites.",
+            error: error.message,
+        });
+    }
+};
+
+
 
 
 

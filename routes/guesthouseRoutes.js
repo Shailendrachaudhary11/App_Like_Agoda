@@ -5,7 +5,7 @@ const auth = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/upload');
 
 // Guesthouse Profile Management
-router.post("/guesthouses", auth(["guesthouse"]), upload.array("guestHouseImage", 5), guesthouseController.manageGuestHouse);
+router.post("/guesthouses", auth(["guesthouse"]), upload.array("guestHouseImage", 10), guesthouseController.manageGuestHouse);
 router.get("/guesthouses/my", auth(["guesthouse"]), guesthouseController.getMyGuesthouse);
 
 // Room Management
