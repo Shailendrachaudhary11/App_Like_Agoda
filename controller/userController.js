@@ -1,28 +1,35 @@
 const User = require("../models/user");
 const bcrypt = require("bcryptjs");
-const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
 const createNotification = require("../utils/notificationHelper");
 const Admin = require("../models/adminUser")
 
-// ----------------- register ----------------
 exports.register = async (req, res) => {
     try {
-        let { name, email, phone, password, role } = req.body;
+        let { name, email, phone, password, role, address } = req.body;
 
-        email = email.toLowerCase().trim();
-
-        if (!name || !email || !phone || !password) {
+        if (!name || !email || !password || !phone) {
             return res.status(400).json({
                 success: false,
-                statusCode: 400,
-                message: "Name, email, phone, address and password are required."
+                message: "Name, Email, Password, phoneNumber are required.",
             });
         }
 
-        // Email check
-        const existingUser = await User.findOne({ email });
+        if (password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must be at least 6 characters.",
+            });
+        }
+
+        email = email.toLowerCase().trim();
+
+        // Email or phone check
+        const [existingUser, existingPhone] = await Promise.all([
+            User.findOne({ email }),
+            User.findOne({ phone })
+        ]);
         if (existingUser) {
             return res.status(400).json({
                 success: false,
@@ -30,9 +37,6 @@ exports.register = async (req, res) => {
                 message: "User already registered with this email.",
             });
         }
-
-        // Phone check
-        const existingPhone = await User.findOne({ phone });
         if (existingPhone) {
             return res.status(400).json({
                 success: false,
@@ -41,6 +45,9 @@ exports.register = async (req, res) => {
             });
         }
 
+        //  Default role = "customer" agar role nahi bheja gaya
+        let userRole = role ? role.toLowerCase() : "customer";
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // New User
@@ -48,43 +55,41 @@ exports.register = async (req, res) => {
             name,
             email,
             phone,
-            address: req.body.address ? req.body.address : null,  // optional
+            address: address || null,
             password: hashedPassword,
-            role,
-            profileImage: req.file ? req.file.filename : null
+            role: userRole,
+            profileImage: req.file ? req.file.filename : null,
+            status: userRole === "customer" ? "approved" : "pending" //  Customers auto-approved
         });
 
-        if (role === "customer") {
-            newUser.status = "approved";
-        }
-
-        if (role === "guesthouse") {
+        //  Notification only if guesthouse
+        if (userRole === "guesthouse") {
             const masterAdmin = await Admin.findOne({ role: "admin" });
 
             if (masterAdmin) {
                 await createNotification(
-                    { userId: newUser._id, role: "guesthouse" }, // sender = new guesthouse
-                    { userId: masterAdmin._id, role: "admin" }, // receiver = system admin
+                    { userId: newUser._id, role: "guesthouse" }, // sender
+                    { userId: masterAdmin._id, role: "admin" },   // receiver
                     "New Guesthouse Registration",
                     `Guesthouse "${newUser.name}" has registered and is waiting for approval.`,
                     "system",
                     { guesthouseId: newUser._id }
                 );
-                console.log("Notification send")
+                console.log("Notification sent");
             } else {
                 console.warn("[NOTIFICATION] No master admin found in DB.");
             }
         }
-
 
         await newUser.save();
 
         return res.status(201).json({
             success: true,
             statusCode: 201,
-            message: role === "customer"
-                ? "Customer registered & approved successfully."
-                : "User created successfully. Wait for admin approval.",
+            message:
+                userRole === "customer"
+                    ? "Customer registered & approved successfully."
+                    : "User created successfully. Wait for admin approval.",
             Id: newUser._id
         });
 
@@ -99,8 +104,6 @@ exports.register = async (req, res) => {
     }
 };
 
-
-// ------------------ LOGIN USER -----------------
 exports.login = async (req, res) => {
     try {
         let { email, phone, password } = req.body;
@@ -153,7 +156,6 @@ exports.login = async (req, res) => {
 
         // Check account status
         if (user.status !== "approved") {
-            console.warn("[AUTH] Login failed: inactive/suspended account");
             return res.status(403).json({
                 success: false,
                 statusCode: 403,
@@ -200,11 +202,9 @@ exports.login = async (req, res) => {
     }
 };
 
-
-// ----------------- get own profile ---------------
 exports.getMyProfile = async (req, res) => {
     try {
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const BASE_URL = process.env.BASE_URL;
 
         // Build profile image URL
         const profileImageUrl = req.user.profileImage
@@ -242,13 +242,9 @@ exports.getMyProfile = async (req, res) => {
     }
 };
 
-// ---------------- update profile -----------------
 exports.updateProfile = async (req, res) => {
     try {
-        console.log("Updating profile:", req.user?._id);
-
-        // Load fresh user
-        let user = await User.findById(req.user._id);
+        let user = await User.findById(req.user.id);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -356,17 +352,7 @@ exports.updateProfile = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: "Profile updated successfully.",
-            data: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                phone: user.phone,
-                address: user.address,
-                role: user.role,
-                profileImage: profileImageUrl,
-                createdAt: user.createdAt,
-            },
+            message: "Profile updated successfully."
         });
 
     } catch (err) {
@@ -380,7 +366,6 @@ exports.updateProfile = async (req, res) => {
     }
 };
 
-// ------------------ forgot password -----------
 exports.changePassword = async (req, res) => {
     try {
         const { oldPassword, newPassword, confirmPassword } = req.body;
@@ -458,7 +443,6 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-// ---------------- forgot password using email ----------
 exports.forgotPassword = async (req, res) => {
     try {
         let { email } = req.body;
@@ -496,8 +480,6 @@ exports.forgotPassword = async (req, res) => {
     }
 };
 
-
-// ------------------- OTP verify
 exports.verifyOtp = async (req, res) => {
     try {
         const { otp } = req.body;
@@ -532,9 +514,6 @@ exports.verifyOtp = async (req, res) => {
     }
 };
 
-
-
-// ------------------ reset Password -----------------------
 exports.resetPassword = async (req, res) => {
     try {
         const { newPassword, confirmPassword } = req.body;
@@ -567,6 +546,3 @@ exports.resetPassword = async (req, res) => {
         return res.status(500).json({ success: false, message: "Internal server error.", error: err.message });
     }
 };
-
-
-

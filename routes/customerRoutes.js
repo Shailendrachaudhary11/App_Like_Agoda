@@ -3,41 +3,49 @@ const router = express.Router();
 const customerController = require("../controller/customerController")
 const auth = require("../middlewares/authMiddleware")
 
-router.get("/guesthouses", auth(["customer"]), customerController.getAllGuestHouses);
-router.get("/guesthouses/nearby", auth(["customer"]), customerController.searchGuestHouseNearBy);
-router.get("/guesthouses/:id", auth(["customer"]), customerController.getGuestHouseById);
+router.post("/customer/guesthouses", auth(["customer"]), customerController.getAllGuestHouses);
+router.get("/customer/guesthouses/nearby", auth(["customer"]), customerController.searchGuestHouseNearBy);
+router.get("/customer/guesthouses/:id", auth(["customer"]), customerController.getGuestHouseById);
+
+router.get("/customer/guesthouses/:guesthouseId/rooms", auth(["customer"]), customerController.getAllRoomsByGuesthouseId);
+router.get("/customer/rooms", auth(["customer"]), customerController.searchRooms); // room filter
+router.get("/customer/rooms/:id", auth(["customer"]), customerController.getRoomById)
 
 
-router.get("/rooms", auth(["customer"]), customerController.searchRooms); // room filter
-router.get("/rooms/:id", auth(["customer"]), customerController.getRoomById)
+router.post("/customer/bookings", auth(["customer"]), customerController.createBooking);
+router.put("/customer/bookings/:id/pay", auth(["customer"]), customerController.payPayment)
+router.get("/customer/bookings", auth(["customer"]), customerController.allBooking);
+router.get("/customer/bookings/past", auth(["customer"]), customerController.pastBooking);
+router.get("/customer/bookings/upcoming", auth(["customer"]), customerController.upcomingBooking);
+router.get("/customer/bookings/cancel", auth(["customer"]), customerController.getCancelBookings);
+router.get("/customer/bookings/:id", auth(["customer"]), customerController.getBooking);
+router.put("/customer/bookings/:id/cancel", auth(["customer"]), customerController.cancelBooking);
 
-// router.get("/booking/checkRoom", auth(["customer"]), customerController.checkAvaibilityRoom);
-router.post("/bookings", auth(["customer"]), customerController.createBooking);
-router.put("/bookings/:id/pay", auth(["customer"]), customerController.payPayment)
-router.get("/bookings", auth(["customer"]), customerController.allBooking);
-router.get("/bookings/past", auth(["customer"]), customerController.pastBooking);
-router.get("/bookings/upcoming", auth(["customer"]), customerController.upcomingBooking);
-router.get("/bookings/cancel", auth(["customer"]), customerController.getCancelBookings);
-router.get("/bookings/:id", auth(["customer"]), customerController.getBooking);
-router.put("/bookings/:id/cancel", auth(["customer"]), customerController.cancelBooking);
+router.post("/customer/reviews", auth(["customer"]), customerController.addReviewAndRating);
+router.get("/customer/reviews", auth(["customer"]), customerController.getAllReviews)
+router.get("/customer/reviews/guesthouses/:id", auth(["customer"]), customerController.getReviewByGuestHouse);
+router.get("/customer/reviews/room/:id", auth(["customer"]), customerController.getReviewByRoom);
 
-router.post("/reviews", auth(["customer"]), customerController.addReviewAndRating);
-router.get("/reviews", auth(["customer"]), customerController.getAllReviews)
-router.get("/reviews/guesthouses/:id", auth(["customer"]), customerController.getReviewByGuestHouse);
-router.get("/reviews/room/:id", auth(["customer"]), customerController.getReviewByRoom);
+router.get("/customer/promos", auth(["customer"]), customerController.getAllPromos);
+router.get("/customer/promos/:id", auth(["customer"]), customerController.getPromoById);
 
-router.get("/promos", auth(["customer"]), customerController.getAllPromos);
-router.get("/promos/:id", auth(["customer"]), customerController.getPromoById);
+router.get("/customer/notifications", auth(["customer"]), customerController.getAllNotification);
+router.put("/customer/notifications/:notificationId/read", auth(["customer"]), customerController.readNotification);
+router.delete("/customer/notifications/:notificationId/delete", auth(["customer"]), customerController.deleteNotification);
 
-router.get("/notifications", auth(["customer"]), customerController.getAllNotification);
-router.put("/notifications/:notificationId/read", auth(["customer"]), customerController.readNotification);
-router.delete("/notifications/:notificationId/delete", auth(["customer"]), customerController.deleteNotification);
+router.get("/customer/favorites", auth(["customer"]), customerController.getfavorites);
+router.post("/customer/favorites/:id", auth(["customer"]), customerController.addFavorites);
+router.delete("/customer/favorites/:id", auth(["customer"]), customerController.removeFavorite);
 
-router.get("/favorites", auth(["customer"]), customerController.getfavorites);
-router.post("/favorites/:id", auth(["customer"]), customerController.addFavorites);
-router.delete("/favorites/:id", auth(["customer"]), customerController.removeFavorite);
+router.post("/customer/addBedroomNames", auth(["customer"]), customerController.addBedroomNames);
+router.post("/customer/setMaxPrice", auth(["customer"]), customerController.setMaxPrice);
+router.post("/customer/facilities/add", auth(["customer"]), customerController.createFacility);
+router.post("/customer/atolls/add", auth(["customer"]), customerController.createAtoll);
+router.post("/customer/islands/add", auth(["customer"]), customerController.createIslands);
 
-
-
+router.post("/customer/bedrooms", auth(["customer"]), customerController.getbedroom);
+router.post("/customer/atolls", auth(["customer"]), customerController.getAllAtolls);
+router.post("/customer/facilities", auth(["customer"]), customerController.getAllfacilities);
+router.post("/customer/islands", auth(["customer"]), customerController.getAllIslands);
 
 module.exports = router;

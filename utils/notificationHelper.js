@@ -7,8 +7,6 @@ const createNotification = async (sender, receiver, title, message, type="genera
       receiver,
       title,
       message,
-      type,
-      metadata
     });
     await notification.save();
     console.log("notification send")

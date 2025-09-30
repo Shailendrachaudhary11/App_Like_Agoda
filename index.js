@@ -32,10 +32,15 @@ ensureUploadDirs([
 ]);
 
 // Routes
+// app.use('/api/adminAuth', adminRoutes);
+// app.use('/api/userAuth', userRoutes);
+// app.use('/api/guesthouse', guestHouseRoutes);
+// app.use('/api/customer', customerRoutes);
+
 app.use('/api/adminAuth', adminRoutes);
-app.use('/api/userAuth', userRoutes);
-app.use('/api/guesthouse', guestHouseRoutes);
-app.use('/api/customer', customerRoutes);
+app.use('/api', userRoutes);
+app.use('/api', guestHouseRoutes);
+app.use('/api', customerRoutes);
 
 // Start server
 const PORT = process.env.PORT || 5050;

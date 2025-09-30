@@ -9,10 +9,24 @@ const User = require("../models/user")
 const baseUrl = process.env.BASE_URL;
 
 // -------------------------------- GUESTHOUSE --------------------------------
+
 exports.manageGuestHouse = async (req, res) => {
     try {
         const ownerId = req.user._id;
-        const { name, address, city, state, location, contactNumber, description } = req.body;
+        const {
+            name,
+            address,
+            city,
+            state,
+            location,       // expects something like { type: "Point", coordinates: [lng, lat] }
+            contactNumber,
+            description,
+            bedroom,
+            price,
+            facilities,
+            paymentOptions,
+            stars
+        } = req.body;
 
         console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
 
@@ -27,16 +41,52 @@ exports.manageGuestHouse = async (req, res) => {
         // Save only filenames
         const images = req.files.map(file => file.filename);
 
-        // BASE_URL for frontend
+        // Build the images full URLs
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-        const imagesWithUrl = images.map(name => `${BASE_URL}/uploads/guestHouseImage/${name}`);
+        const imagesWithUrl = images.map(fname => `${BASE_URL}/uploads/guestHouseImage/${fname}`);
+
+        // If location is passed as JSON string, parse it
+        // let locObj = null;
+        // if (location) {
+        //     try {
+        //         if (typeof location === 'string') {
+        //             locObj = JSON.parse(location);
+        //         } else {
+        //             locObj = location;
+        //         }
+        //         // minimal check
+        //         if (!Array.isArray(locObj.coordinates) || locObj.coordinates.length !== 2) {
+        //             throw new Error("Invalid location coordinates");
+        //         }
+        //         // ensure type is “Point”
+        //         locObj.type = locObj.type || 'Point';
+        //     } catch (e) {
+        //         return res.status(400).json({
+        //             success: false,
+        //             message: "Location must be a valid GeoJSON Point object",
+        //             error: e.message
+        //         });
+        //     }
+        // }
 
         // Check if guesthouse already exists for this owner
         let guesthouse = await Guesthouse.findOne({ owner: ownerId });
 
         if (guesthouse) {
-            // Update existing guesthouse
-            guesthouse.name = name || guesthouse.name;
+            // Update existing
+            if (name) {
+                // if changing name, check uniqueness
+                if (name !== guesthouse.name) {
+                    const dup = await Guesthouse.findOne({ name });
+                    if (dup) {
+                        return res.status(400).json({
+                            success: false,
+                            message: "Guesthouse name must be unique"
+                        });
+                    }
+                }
+                guesthouse.name = name;
+            }
             guesthouse.address = address || guesthouse.address;
             guesthouse.city = city || guesthouse.city;
             guesthouse.state = state || guesthouse.state;
@@ -44,8 +94,25 @@ exports.manageGuestHouse = async (req, res) => {
             guesthouse.contactNumber = contactNumber || guesthouse.contactNumber;
             guesthouse.description = description || guesthouse.description;
 
-            // Merge old images with new uploads
-            guesthouse.guestHouseImage = images.length > 0 ? images : guesthouse.guestHouseImage;
+            if (bedroom != null) guesthouse.bedroom = bedroom;
+            if (price != null) guesthouse.price = price;
+            if (stars != null) guesthouse.stars = stars;
+
+            if (facilities) {
+                // if passed as a string (comma separated), parse to array
+                guesthouse.facilities = Array.isArray(facilities)
+                    ? facilities
+                    : facilities.split(',').map(s => s.trim());
+            }
+            if (paymentOptions) {
+                guesthouse.paymentOptions = Array.isArray(paymentOptions)
+                    ? paymentOptions
+                    : paymentOptions.split(',').map(s => s.trim());
+            }
+
+            // Merge images: new images replace old or append? Here, we replace all.
+            // If you want to append: guesthouse.guestHouseImage = guesthouse.guestHouseImage.concat(images);
+            guesthouse.guestHouseImage = images;  // or append logic
 
             await guesthouse.save();
 
@@ -53,44 +120,66 @@ exports.manageGuestHouse = async (req, res) => {
                 success: true,
                 message: "Guesthouse updated successfully.",
                 data: {
-                    guesthouseId: guesthouse._id
-                },
+                    guesthouseId: guesthouse._id,
+                    images: imagesWithUrl
+                }
             });
         } else {
-            // Check for duplicate name
+            // Creating new guesthouse
+            // Validate required fields
+            if (!name || !bedroom || !price) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name, bedroom, and price are required for new guesthouse"
+                });
+            }
+            // Check name uniqueness
             const duplicate = await Guesthouse.findOne({ name });
             if (duplicate) {
                 return res.status(400).json({
                     success: false,
-                    message: "Guesthouse name must be unique",
+                    message: "Guesthouse name must be unique"
                 });
             }
 
-            // Create new guesthouse
-            guesthouse = new Guesthouse({
+            const gh = new Guesthouse({
                 owner: ownerId,
                 name,
                 address,
                 city,
                 state,
-                location,
+                location: location,
                 contactNumber,
                 description,
-                guestHouseImage: images, // corrected field name
+                bedroom,
+                price,
+                guestHouseImage: images,
+                stars: stars || undefined,
+                facilities: facilities
+                    ? (Array.isArray(facilities)
+                        ? facilities
+                        : facilities.split(',').map(s => s.trim()))
+                    : undefined,
+                paymentOptions: paymentOptions
+                    ? (Array.isArray(paymentOptions)
+                        ? paymentOptions
+                        : paymentOptions.split(',').map(s => s.trim()))
+                    : undefined
             });
 
-            await guesthouse.save();
+            await gh.save();
 
             return res.status(201).json({
                 success: true,
                 message: "Guesthouse submitted successfully.",
                 data: {
-                    guesthouseId: guesthouse._id
-                },
+                    guesthouseId: gh._id,
+                    images: imagesWithUrl
+                }
             });
         }
     } catch (err) {
-        console.error("[GUESTHOUSE] Error:", err.message);
+        console.error("[GUESTHOUSE] Error:", err);
         return res.status(500).json({
             success: false,
             message: "Internal server error while managing guesthouse",
@@ -98,6 +187,7 @@ exports.manageGuestHouse = async (req, res) => {
         });
     }
 };
+
 
 exports.getMyGuesthouse = async (req, res) => {
     try {
@@ -1091,9 +1181,4 @@ exports.totalRevenue = async (req, res) => {
         });
     }
 };
-
-
-
-
-
 

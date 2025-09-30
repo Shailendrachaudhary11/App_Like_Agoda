@@ -6,46 +6,109 @@ const Notification = require("../models/notification")
 const Promo = require("../models/Promo")
 const Favorites = require("../models/Favorite")
 const createNotification = require("../utils/notificationHelper");
+const { RunCommandCursor } = require("mongodb");
+const Atolls = require("../models/Atoll");
+const Facility = require("../models/Facility");
+const Island = require("../models/Island");
+const Bedroom = require("../models/Bedroom")
 
-const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5050}`;
 
-// -------------------------------------------- GUESTHOUSE  ---------------------------------------
+// -------------------------------------------- guestHouseRoutesGUESTHOUSE  ---------------------------------------
 exports.getAllGuestHouses = async (req, res) => {
     try {
+        let { lng, lat, distance } = req.body;
 
-        const guesthouses = await Guesthouse.find({ status: "active" });
 
-        if (guesthouses.length === 0) {
+        lng = lng ? parseFloat(lng) : null;
+        lat = lat ? parseFloat(lat) : null;
+        distance = distance ? parseInt(distance) : null;
+
+
+        if (!lng || !lat || !distance) {
+            const guestHouses = await Guesthouse.find({ status: "active" });
+
+            if (!guestHouses || guestHouses.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    statusCode: 404,
+                    NoOfGuestHouse: 0,
+                    message: "No guesthouses found.",
+                    data: []
+                });
+            }
+
+            // गेस्टहाउस की छवियों के लिए पूर्ण URL जोड़ें
+            const guestHousesWithUrls = guestHouses.map(gh => {
+                const obj = gh.toObject();
+                if (obj.guestHouseImage) {
+                    obj.guestHouseImage = obj.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
+                }
+                return obj;
+            });
+
             return res.status(200).json({
                 success: true,
-                NoOfGuestHouse: 0,
-                message: "No active guestHouse found.",
-                data: []
-            })
+                statusCode: 200,
+                NoOfGuestHouse: guestHousesWithUrls.length,
+                message: "Successfully fetched all active guesthouses.",
+                data: guestHousesWithUrls
+            });
         }
 
-        // सिर्फ images को update करना
-        guesthouses.forEach(gh => {
-            if (gh.guestHouseImage && gh.guestHouseImage.length > 0) {
-                gh.guestHouseImage = gh.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
-            } else {
-                gh.guestHouseImage = [];
+        // यदि lng, lat, और distance सभी उपलब्ध हैं, तो निकटतम गेस्टहाउस खोजें
+        if (isNaN(lng) || isNaN(lat) || isNaN(distance)) {
+            return res.status(400).json({
+                success: false,
+                statusCode: 400,
+                message: "Invalid request body. Provide valid lng, lat, and distance."
+            });
+        }
+
+        const guestHouses = await Guesthouse.find({
+            status: "active",
+            location: {
+                $near: {
+                    $geometry: { type: "Point", coordinates: [lng, lat] },
+                    $maxDistance: distance
+                }
             }
         });
 
-        res.status(200).json({
-            success: true,
-            NoOfGuestHouse: guesthouses.length,
-            message: "Successfully fetched all guesthouses.",
-            data: guesthouses
+        if (!guestHouses || guestHouses.length === 0) {
+            return res.status(404).json({
+                success: false,
+                statusCode: 404,
+                NoOfGuestHouse: 0,
+                message: "No guesthouses found nearby.",
+                data: []
+            });
+        }
+
+        // गेस्टहाउस की छवियों के लिए पूर्ण URL जोड़ें
+        const guestHousesWithUrls = guestHouses.map(gh => {
+            const obj = gh.toObject();
+            if (obj.guestHouseImage) {
+                obj.guestHouseImage = obj.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
+            }
+            return obj;
         });
 
-    } catch (error) {
-        console.error("Error fetching guesthouses:", error.message);
-        res.status(500).json({
+        return res.status(200).json({
+            success: true,
+            statusCode: 200,
+            NoOfGuestHouse: guestHousesWithUrls.length,
+            message: "Successfully fetched guesthouses near you.",
+            data: guestHousesWithUrls
+        });
+
+    } catch (err) {
+        console.error("[GuestHouse Nearby] Error:", err);
+        return res.status(500).json({
             success: false,
-            message: "Error fetching all guesthouses.",
-            error: error.message
+            statusCode: 500,
+            message: "Internal server error while searching guesthouses.",
+            error: err.message
         });
     }
 };
@@ -54,6 +117,7 @@ exports.getGuestHouseById = async (req, res) => {
     try {
         const { id } = req.params;
 
+        // find guesthoue by Id
         const guestHouse = await Guesthouse.findById(id);
 
         if (!guestHouse) {
@@ -68,12 +132,14 @@ exports.getGuestHouseById = async (req, res) => {
 
         const guestHouseObj = guestHouse.toObject();
 
+        // convert image into full url path
         if (guestHouseObj.guestHouseImage) {
             guestHouseObj.guestHouseImage = guestHouseObj.guestHouseImage.map(
                 img => `${BASE_URL}/uploads/guestHouseImage/${img}`
             );
         }
 
+        // successfully fetch guesthouse details
         return res.status(200).json({
             success: true,
             statusCode: 200,
@@ -158,11 +224,40 @@ exports.searchGuestHouseNearBy = async (req, res) => {
 };
 
 // -------------------------------------------- ROOMS ---------------------------------------
+exports.getAllRoomsByGuesthouseId = async (req, res) => {
+    try {
+        const guesthouseId = req.params.guesthouseId; // route param se id nikalna
+
+        const rooms = await Room.find({ guesthouse: guesthouseId });
+
+        if (!rooms || rooms.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No rooms found for this guesthouse."
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetch all rooms",
+            count: rooms.length,
+            data: rooms
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching rooms by guesthouseId.",
+            error: error.message
+        });
+    }
+};
+
 exports.getRoomById = async (req, res) => {
     try {
         const { id } = req.params;
 
-
+        // find room using roomId
         const room = await Room.findById(id).populate("guesthouse", "name address");
 
         if (!room) {
@@ -172,6 +267,7 @@ exports.getRoomById = async (req, res) => {
             });
         }
 
+        // this base url for room images full url path
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
         // Fix photos URLs
@@ -199,6 +295,8 @@ exports.getRoomById = async (req, res) => {
 
 exports.searchRooms = async (req, res) => {
     try {
+
+        // search room by using filter 
         const { city, startDate, endDate, capacity, minPrice, maxPrice, amenities, sort: sortQuery } = req.query;
 
         let filter = {};
@@ -458,7 +556,7 @@ exports.createBooking = async (req, res) => {
             { userId: guesthouseId, role: "guesthouse" }, // sender = guesthouse admin
             { userId: customerId, role: "customer" },        // receiver = customer
             "Booking Created",
-            `Your booking at ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Please complete your payment to confirm your booking.`,
+            `Your booking at ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Please complete your payment ${boking.finalAmount} to confirm your booking.`,
             "payment",
             { bookingId: booking._id, guesthouseId: guesthouseId, roomId: roomId }
         );
@@ -518,8 +616,6 @@ exports.payPayment = async (req, res) => {
             });
         }
 
-        // Optional: verify payment with payment gateway here
-
         // Update payment status
         booking.paymentStatus = "paid";
         booking.status = "confirmed"; // confirm booking after payment
@@ -535,22 +631,15 @@ exports.payPayment = async (req, res) => {
             { userId: guesthouseId, role: "guesthouse" }, // sender
             { userId: customerId, role: "customer" },        // receiver
             "Payment Successful",                            // title
-            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been confirmed.`, // message
-            "payment",                                       // type
-            {
-                bookingId: booking._id,
-                guesthouseId: guesthouse._id,
-                roomId: booking.room, // assuming booking.room exists
-            }
+            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been confirmed.`
         );
 
+        // send notification to guesthouse for received payment
         await createNotification(
             { userId: customerId, role: "customer" },  // sender = customer
             { userId: guesthouseId, role: "guesthouse" },  // receiver = guesthouse
             "Payment Received",
-            `payment ${booking.amount} received of bookingId ${booking._id} is successfully received.`,
-            "payment",
-            { bookingId: booking._id, guesthouseId: guesthouseId, customerId: customerId }
+            `payment ${booking.amount} received of bookingId ${booking._id} is successfully received.`
         );
 
         res.status(200).json({
@@ -691,13 +780,7 @@ exports.cancelBooking = async (req, res) => {
             { userId: guesthouseId, role: "guesthouse" }, // sender
             { userId: customerId, role: "customer" },        // receiver
             "Cancel Booking",                            // title
-            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been cancel. Amount ${booking.amount} will be refuded.`, // message
-            "booking",                                       // type
-            {
-                bookingId: booking._id,
-                guesthouseId: guesthouse._id,
-                roomId: booking.room, // assuming booking.room exists
-            }
+            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been cancel. Amount ${booking.amount} will be refuded.`
         );
 
         res.status(200).json({
@@ -857,7 +940,7 @@ exports.addReviewAndRating = async (req, res) => {
         const rooms = await Room.findOne({ _id: roomId, guesthouse: guestHouseId })
         if (!rooms) {
             return res.status(404).json({
-                success: true,
+                success: false,
                 message: "No room found in given guesthouse."
             })
         }
@@ -878,7 +961,7 @@ exports.addReviewAndRating = async (req, res) => {
         //  Save review
         await review.save();
 
-        return res.status(201).json({
+        res.status(201).json({
             success: true,
             message: "Review added successfully",
             review
@@ -1105,7 +1188,8 @@ exports.getAllNotification = async (req, res) => {
             "receiver.role": "customer",
         })
             .sort({ createdAt: -1 }) // latest first
-            .lean();
+            .lean()
+            .select("-sender -receiver -createdAt  -updatedAt -__v")
 
         if (!notifications || notifications.length === 0) {
             return res.status(200).json({
@@ -1117,12 +1201,21 @@ exports.getAllNotification = async (req, res) => {
             });
         }
 
+        const mappedNotifications = notifications.map(n => {
+            return {
+                id: n._id,
+                title: n.title,
+                message: n.message,
+                isRead: n.isRead,
+            };
+        });
+
         return res.status(200).json({
             success: true,
             statusCode: 200,
             message: "Notifications fetched successfully.",
-            count: notifications.length,
-            data: notifications
+            count: mappedNotifications.length,
+            data: mappedNotifications
         });
 
     } catch (error) {
@@ -1145,7 +1238,7 @@ exports.readNotification = async (req, res) => {
         const notification = await Notification.findOne({
             _id: notificationId,
             "receiver.userId": customerId,
-        });
+        }).select("-sender -receiver -createdAt  -updatedAt -__v");
 
         if (!notification) {
             return res.status(404).json({
@@ -1158,10 +1251,18 @@ exports.readNotification = async (req, res) => {
         notification.isRead = true;
         await notification.save();
 
+        const mappedNotifications = {
+            id: notification._id,
+            title: notification.title,
+            message: notification.message,
+            isRead: notification.isRead,
+        }
+
+
         return res.status(200).json({
             success: true,
             message: "Notification marked as read",
-            data: notification
+            data: mappedNotifications
         });
 
     } catch (err) {
@@ -1330,9 +1431,294 @@ exports.removeFavorite = async (req, res) => {
     }
 };
 
+// ---------------------------------------- get islands/ facilities / atolls
+exports.createAtoll = async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) {
+            return res.status(400).json({
+                success: false,
+                message: "Name field is required"
+            });
+        }
+
+        // Check if an atoll with same name exists already (optional)
+        const existing = await Atolls.findOne({ name });
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: "Atoll with this name already exists"
+            });
+        }
+
+        const atoll = new Atolls({
+            name
+            // createdAt is auto defaulted
+        });
+
+        await atoll.save();
+
+        return res.status(201).json({
+            success: true,
+            data: atoll
+        });
+    } catch (err) {
+        console.error("[Atoll] createAtoll error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: err.message
+        });
+    }
+};
+
+exports.getAllAtolls = async (req, res) => {
+    try {
+        const atolls = await Atolls.find({}, { _id: 1, name: 1, createdAt: 1 }).lean();
+
+        const modifiedAtolls = atolls.map(atoll => ({
+            id: atoll._id,
+            name: atoll.name,
+
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: modifiedAtolls.length,
+            message: "Successfully fetched all atolls",
+            data: modifiedAtolls
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching atolls",
+            error: error.message
+        });
+    }
+};
+
+exports.createFacility = async (req, res) => {
+    try {
+        const { name } = req.body;
+
+        if (!name || name.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: "Facility name is required"
+            });
+        }
+
+        // Optionally normalize name (e.g. trim, lowercase first letter, etc.)
+        const normalized = name.trim();
+
+        // Check duplicate
+        const existing = await Facility.findOne({ name: normalized });
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: "Facility already exists"
+            });
+        }
+
+        const facility = new Facility({
+            name: normalized
+
+        });
+
+        await facility.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Successfully add facility"
+        });
+    } catch (err) {
+        console.error("[Facility] createFacility error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: err.message
+        });
+    }
+};
+
+exports.addBedroomNames = async (req, res) => {
+
+    try {
+        const { name } = req.body; // Expecting an array of bedroom names
+
+        if (!name) {
+            return res.status(400).json({ message: 'Please provide a bedroom name.' });
+        }
+
+        const bedroom = await Bedroom.findOneAndUpdate(
+            {},
+            { $addToSet: { names: name } }, // Adds each name to the array if not already present
+            { new: true, upsert: true }
+        );
+
+        res.status(200).json({ message: 'Bedroom names added successfully.', bedroom });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'An error occurred while adding bedroom names.' });
+    }
+};
+
+exports.setMaxPrice = async (req, res) => {
+    const { maxPrice } = req.body; // Expecting a string value for maxPrice
+
+    if (!maxPrice) {
+        return res.status(400).json({ message: 'Please provide a maxPrice.' });
+    }
+
+    try {
+        const bedroom = await Bedroom.findOneAndUpdate(
+            {},
+            { $set: { maxPrice } },
+            { new: true, upsert: true }
+        );
+
+        res.status(200).json({ message: 'Max price set successfully.', bedroom });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'An error occurred while setting the max price.' });
+    }
+};
+
+exports.getbedroom = async (req, res) => {
+    try {
+        const bedroom = await Bedroom.findOne(); // Assuming only one document exists
+
+        if (!bedroom) {
+            return res.status(404).json({
+                success: false,
+                message: "No bedroom data found",
+            });
+        }
+
+        // Constructing the response as per your specified structure
+        const response = {
+            success: true,
+            message: "Successfully fetched all bedroom types",
+            maxPrice: bedroom.maxPrice.toString(),
+            data: bedroom.names.map(name => ({
+                id: bedroom._id.toString(),
+                name: name,
+            })),
+        };
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error(error); // Log the error for debugging
+        res.status(500).json({
+            success: false,
+            message: "Error fetching bedroom data",
+            error: error.message,
+        });
+    }
+};
 
 
+exports.getAllfacilities = async (req, res) => {
+    try {
+        const facilities = await Facility.find({}, { _id: 1, name: 1 }).lean().sort({ createdAt: -1 });
+
+        const modifiedAtolls = facilities.map(facilitie => ({
+            id: facilitie._id,
+            name: facilitie.name,
+
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: modifiedAtolls.length,
+            message: "Succefully fetch all facilities",
+            data: modifiedAtolls
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching facilities",
+            error: error.message // It's helpful to include the error message for debugging
+        });
+    }
+};
+
+exports.createIslands = async (req, res) => {
+    try {
+        const { name, atollId } = req.body;
+
+        // Validate input
+        if (!name || !atollId) {
+            return res.status(400).json({
+                success: false,
+                message: "name and atollId are required."
+            });
+        }
+
+        // Check for existing island
+        const existingIsland = await Island.findOne({ name });
+        if (existingIsland) {
+            return res.status(400).json({
+                success: false,
+                message: "Island already exists."
+            });
+        }
+
+        // Create new island
+        const newIsland = new Island({
+            name,
+            atoll: atollId,
+            createdAt: new Date()
+        });
+
+        await newIsland.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Island successfully added.",
+            data: newIsland
+        });
+    } catch (err) {
+        console.error("[Island] createIsland error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An error occurred while adding the island.",
+            error: err.message
+        });
+    }
+};
 
 
+exports.getAllIslands = async (req, res) => {
+    try {
+        // Use req.query to get the atollId from the query string
+        const { atollId } = req.query;
+
+        // Validate that atollId is provided
+        if (!atollId) {
+            return res.status(400).json({
+                success: false,
+                message: "atollId query parameter is required"
+            });
+        }
+
+        // Fetch islands that match the atollId
+        const islands = await Island.find({ atoll: atollId });
+
+        // Return the result
+        res.status(200).json({
+            success: true,
+            count: islands.length,
+            data: islands
+        });
+    } catch (error) {
+        // Handle any errors that occur
+        res.status(500).json({
+            success: false,
+            message: "Error fetching islands",
+            error: error.message // It's helpful to include the error message for debugging
+        });
+    }
+};
 
 

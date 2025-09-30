@@ -12,7 +12,7 @@ const sendEmail = require("../utils/sendEmail")
 
 const BASE_URL = process.env.BASE_URL;
 
-// ---------------- Admin Registration ----------------
+// -------------------------------------------- Admin Registration ------------------------------
 exports.register = async (req, res) => {
     try {
         const data = req.body;
@@ -46,7 +46,7 @@ exports.register = async (req, res) => {
         console.log("Admin registered successfully:", newUser._id);
 
         // BASE_URL
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const BASE_URL = process.env.BASE_URL;
 
         return res.status(201).json({
             success: true,
@@ -142,6 +142,7 @@ exports.getProfile = async (req, res) => {
     try {
         const adminId = req.user?.id;
 
+        // check amdinId present or not
         if (!adminId) {
             return res.status(400).json({
                 success: false,
@@ -376,7 +377,6 @@ exports.changePassword = async (req, res) => {
         });
     }
 };
-
 
 // -------------------------------------------- GUEST HOUSE ---------------------------------------
 exports.getAllGuestOwner = async (req, res) => {
@@ -1158,7 +1158,7 @@ exports.getAllCustomer = async (req, res) => {
 
 exports.getCustomerById = async (req, res) => {
     try {
-        const customerId = req.params.id; // URL से id लो
+        const customerId = req.params.id; // get Id from url
 
         if (!customerId) {
             return res.status(400).json({
@@ -1167,7 +1167,7 @@ exports.getCustomerById = async (req, res) => {
             });
         }
 
-        const customer = await User.findOne({ _id: customerId, role: "customer" });
+        const customer = await User.findOne({ _id: customerId, role: "customer" }).select("-password");
 
         if (!customer) {
             return res.status(404).json({
@@ -1196,85 +1196,6 @@ exports.getCustomerById = async (req, res) => {
         });
     }
 };
-
-// exports.approvalCustomer = async (req, res) => {
-//     try {
-//         const { id } = req.params;
-
-//         const user = await User.findById(id);
-//         if (!user) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "User not found."
-//             });
-//         }
-
-//         user.status = "approved";
-//         await createNotification(
-//             user._id,
-//             "general",
-//             `Your customer registration "${user.name}" has been approved by admin.`,
-//             { user: user._id }
-//         );
-//         await user.save();
-
-//         return res.status(200).json({
-//             success: true,
-//             message: "customer approved successfully.",
-//             userId: user._id,
-//             role: user.role
-//         });
-//     } catch (err) {
-//         return res.status(500).json({
-//             success: false,
-//             message: "Failed to approve user.",
-//             error: err.message
-//         });
-//     }
-// };
-
-// exports.rejectCustomer = async (req, res) => {
-//     try {
-//         const { id } = req.params;
-
-//         const user = await User.findById(id);
-//         if (!user) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "User not found."
-//             });
-//         }
-
-//         if (user.status === "reject") {
-//             return res.status(200).json({
-//                 success: true,
-//                 message: "Customer is already reject.",
-//                 data: {
-//                     id: user._id,
-//                     name: user.name,
-//                     ownerName: user.owner?.name,
-//                     ownerEmail: user.owner?.email,
-//                     status: user.status
-//                 }
-//             });
-//         }
-//         user.status = "reject";
-
-//         user.save();
-//         return res.status(200).json({
-//             success: true,
-//             message: "User rejected successfully.",
-//             userId: user._id,
-//             role: user.role
-//         });
-//     } catch (err) {
-//         return res.status(500).json({
-//             success: false,
-//             message: "Failed to reject user.",
-//             error: err.message
-//         });
-//     }
-// };
 
 exports.suspendedApproveCustomer = async (req, res) => {
     try {
@@ -1308,6 +1229,99 @@ exports.suspendedApproveCustomer = async (req, res) => {
             success: false,
             message: `Failed to ${user.status} user.`,
             error: err.message
+        });
+    }
+};
+
+exports.updateCustomer = async (req, res) => {
+    try {
+        const customerId = req.params.id; // safer
+
+        let user = await User.findById(customerId);
+        if (!user) return res.status(404).json({ success: false, message: "Customer not found", data: null });
+
+        const { name, email, phone, address } = req.body;
+
+        if (name) {
+            const trimmedName = name.toString().trim();
+            if (trimmedName.length < 4)
+                return res.status(400).json({ success: false, message: "Name must be at least 4 characters long", data: null });
+            user.name = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1);
+        }
+
+        if (email) {
+            const emailLower = email.toString().trim().toLowerCase();
+            const existingEmail = await User.findOne({ email: emailLower, _id: { $ne: customerId } });
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower))
+                return res.status(400).json({ success: false, message: "Invalid email format", data: null });
+            if (existingEmail)
+                return res.status(400).json({ success: false, message: "Email already in use", data: null });
+            user.email = emailLower;
+        }
+
+        if (phone) {
+            const phoneStr = phone.toString().trim();
+            const existingPhone = await User.findOne({ phone: phoneStr, _id: { $ne: customerId } });
+            if (!/^[0-9]{10}$/.test(phoneStr))
+                return res.status(400).json({ success: false, message: "Phone must be 10 digits", data: null });
+            if (existingPhone)
+                return res.status(400).json({ success: false, message: "Phone already in use", data: null });
+            user.phone = phoneStr;
+        }
+
+        if (address) user.address = address.toString().trim();
+        if (req.file) user.profileImage = req.file.filename;
+
+        await user.save();
+
+        const profileImageUrl = user.profileImage ? `${process.env.BASE_URL}/uploads/profileImage/${user.profileImage}` : null;
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully.",
+            data: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                address: user.address,
+                role: user.role,
+                profileImage: profileImageUrl,
+                createdAt: user.createdAt,
+            },
+        });
+
+    } catch (err) {
+        console.error("[PROFILE] Error updating profile:", err);
+        return res.status(500).json({ success: false, message: "Failed to update profile.", error: err.message });
+    }
+};
+
+exports.deleteCustomer = async (req, res) => {
+    try {
+        const customerId = req.params.id;
+
+        const customer = await User.findById(customerId);
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: "Customer not found."
+            });
+        }
+
+        await customer.deleteOne();
+
+        return res.status(200).json({
+            success: true,
+            message: "Customer successfully deleted."
+        });
+
+    } catch (error) {
+        console.error("[DELETE CUSTOMER] Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete customer.",
+            error: error.message
         });
     }
 };
@@ -1349,9 +1363,7 @@ exports.getBookingById = async (req, res) => {
         }
 
         const booking = await Booking.findById(bookingId)
-            .populate("guesthouse")   // guesthouse details
-            .populate("customer")     // customer details
-            .populate("room");        // room details (अगर schema में है)
+            .select("-password")     // room details (अगर schema में है)
 
         if (!booking) {
             return res.status(404).json({
@@ -1451,6 +1463,7 @@ exports.getAllPromo = async (req, res) => {
         res.status(200).json({
             success: true,
             count: promos.length,
+            message: "Successfully fetching all promo codes",
             data: promos
         });
     } catch (err) {
@@ -1542,11 +1555,60 @@ exports.getPromoById = async (req, res) => {
 
 exports.updatePromo = async (req, res) => {
     try {
-        const promo = await Promo.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
-        res.status(200).json({ success: true, message: "Promo updated successfully", data: promo });
+        const promoId = req.params.id;
+        let promo = await Promo.findById(promoId);
+
+        if (!promo) {
+            return res.status(404).json({ success: false, message: "Promo not found" });
+        }
+
+        const { code, discountType, discountValue, startDate, endDate, maxUsage } = req.body;
+
+        // 🔹 discountType validation
+        if (discountType && !["flat", "percentage"].includes(discountType)) {
+            return res.status(400).json({
+                success: false,
+                message: "discountType must be either 'flat' or 'percentage'"
+            });
+        }
+
+        // 🔹 discountValue validation
+        if (discountValue && discountValue <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "discountValue must be greater than 0"
+            });
+        }
+
+        // 🔹 date validation
+        if (startDate && endDate && new Date(endDate) <= new Date(startDate)) {
+            return res.status(400).json({
+                success: false,
+                message: "endDate must be greater than startDate"
+            });
+        }
+
+        // 🔹 Allowed fields only
+        const allowedUpdates = { code, discountType, discountValue, startDate, endDate, maxUsage };
+        Object.keys(allowedUpdates).forEach((key) => {
+            if (allowedUpdates[key] !== undefined) {
+                promo[key] = allowedUpdates[key];
+            }
+        });
+
+        await promo.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Promo updated successfully",
+            data: promo
+        });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Error updating promo", error: err.message });
+        res.status(500).json({
+            success: false,
+            message: "Error updating promo",
+            error: err.message
+        });
     }
 };
 
