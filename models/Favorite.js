@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const favoriteSchema = new mongoose.Schema(
     {
         customer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-        room: { type: mongoose.Schema.Types.ObjectId, ref: "Room", required: true }, // ✅ room added
+        guesthouse: { type: mongoose.Schema.Types.ObjectId, ref: "Guesthouse", required: true }, // ✅ guesthouse added
         createdAt: { type: Date, default: Date.now },
     },
 );

@@ -31,12 +31,6 @@ ensureUploadDirs([
   "uploads/rooms"
 ]);
 
-// Routes
-// app.use('/api/adminAuth', adminRoutes);
-// app.use('/api/userAuth', userRoutes);
-// app.use('/api/guesthouse', guestHouseRoutes);
-// app.use('/api/customer', customerRoutes);
-
 app.use('/api/adminAuth', adminRoutes);
 app.use('/api', userRoutes);
 app.use('/api', guestHouseRoutes);

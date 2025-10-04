@@ -14,11 +14,11 @@ router.post("/userAuth/register", upload.single('profileImage'), validateRequest
 router.post('/userAuth/login', userController.login);
 
 // profile
-router.get("/userAuth/profile", auth(["guesthouse", "customer"]), userController.getMyProfile);
+router.post("/userAuth/profile", auth(["guesthouse", "customer"]), userController.getMyProfile);
 router.put("/userAuth/profile", auth(["guesthouse", "customer"]), upload.single('profileImage'), userController.updateProfile);
-router.post("/userAuth/change-password", auth(["guesthouse","customer"]), userController.changePassword);
-router.post('/userAuth/forgot-password',userController.forgotPassword);
-router.post('/userAuth/verify-otp', verifyToken,  userController.verifyOtp);
-router.post("/userAuth/reset-password",verifyToken, userController.resetPassword);
+router.post("/userAuth/change-password", auth(["guesthouse", "customer"]), userController.changePassword);
+router.post('/userAuth/forgot-password', userController.forgotPassword);
+router.post('/userAuth/verify-otp', verifyToken, userController.verifyOtp);
+router.post("/userAuth/reset-password", verifyToken, userController.resetPassword);
 
 module.exports = router;

@@ -220,8 +220,7 @@ exports.getMyProfile = async (req, res) => {
             address: req.user.address,
             role: req.user.role,
             status: req.user.status,
-            profileImage: profileImageUrl,
-            createdAt: req.user.createdAt
+            profileImage: profileImageUrl
         };
 
         return res.status(200).json({

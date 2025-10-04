@@ -17,97 +17,112 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT ||
 // -------------------------------------------- guestHouseRoutesGUESTHOUSE  ---------------------------------------
 exports.getAllGuestHouses = async (req, res) => {
     try {
-        let { lng, lat, distance } = req.body;
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
+        // Extract & parse body params safely
+        let { lng, lat, distance, sort, atolls, islands, facilities } = req.body;
 
         lng = lng ? parseFloat(lng) : null;
         lat = lat ? parseFloat(lat) : null;
-        distance = distance ? parseInt(distance) : null;
+        distance = distance ? parseInt(distance) : 3000; // default 3 km in meters
 
-
-        if (!lng || !lat || !distance) {
-            const guestHouses = await Guesthouse.find({ status: "active" });
-
-            if (!guestHouses || guestHouses.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    statusCode: 404,
-                    NoOfGuestHouse: 0,
-                    message: "No guesthouses found.",
-                    data: []
-                });
-            }
-
-            // गेस्टहाउस की छवियों के लिए पूर्ण URL जोड़ें
-            const guestHousesWithUrls = guestHouses.map(gh => {
-                const obj = gh.toObject();
-                if (obj.guestHouseImage) {
-                    obj.guestHouseImage = obj.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
-                }
-                return obj;
-            });
-
-            return res.status(200).json({
-                success: true,
-                statusCode: 200,
-                NoOfGuestHouse: guestHousesWithUrls.length,
-                message: "Successfully fetched all active guesthouses.",
-                data: guestHousesWithUrls
-            });
-        }
-
-        // यदि lng, lat, और distance सभी उपलब्ध हैं, तो निकटतम गेस्टहाउस खोजें
-        if (isNaN(lng) || isNaN(lat) || isNaN(distance)) {
+        // Validate coordinates if provided
+        if ((lng && !lat) || (!lng && lat)) {
             return res.status(400).json({
                 success: false,
-                statusCode: 400,
-                message: "Invalid request body. Provide valid lng, lat, and distance."
+                message: "Both 'lng' and 'lat' are required for location-based filtering."
             });
         }
 
-        const guestHouses = await Guesthouse.find({
-            status: "active",
-            location: {
+        // Build dynamic filter
+        let filter = { status: "active" };
+        if (facilities && Array.isArray(facilities) && facilities.length > 0) {
+            filter.facilities = { $in: facilities };
+        }
+        if (atolls && Array.isArray(atolls) && atolls.length > 0) {
+            filter.atolls = { $in: atolls };
+        }
+        if (islands && Array.isArray(islands) && islands.length > 0) {
+            filter.islands = { $in: islands };
+        }
+
+        if (lat && lng) {
+            filter.location = {
                 $near: {
                     $geometry: { type: "Point", coordinates: [lng, lat] },
                     $maxDistance: distance
                 }
-            }
-        });
+            };
+        }
 
-        if (!guestHouses || guestHouses.length === 0) {
-            return res.status(404).json({
-                success: false,
-                statusCode: 404,
+        // Handle sorting
+        let sortOption = {};
+        switch (sort) {
+            case "lowest":
+                sortOption = { price: 1 };
+                break;
+            case "highest":
+                sortOption = { price: -1 };
+                break;
+            case "stars":
+                sortOption = { stars: -1 };
+                break;
+            default:
+                sortOption = {};
+        }
+
+        // Fetch guesthouses
+        const guestHouses = await Guesthouse.find(filter)
+            .sort(sortOption)
+            .select("-location -owner -contactNumber -description -facilities -__v -createdAt")
+            .lean(); // lean() for better performance
+
+        if (!guestHouses.length) {
+            return res.status(200).json({
+                success: true,
                 NoOfGuestHouse: 0,
-                message: "No guesthouses found nearby.",
+                message: "No guesthouses found.",
                 data: []
             });
         }
 
-        // गेस्टहाउस की छवियों के लिए पूर्ण URL जोड़ें
-        const guestHousesWithUrls = guestHouses.map(gh => {
-            const obj = gh.toObject();
-            if (obj.guestHouseImage) {
-                obj.guestHouseImage = obj.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
-            }
-            return obj;
-        });
+        // Add full image URLs & reviews count
+        const guestHousesWithUrls = await Promise.all(
+            guestHouses.map(async gh => {
+                gh.id = gh._id;
+                delete gh._id;
+
+                if (gh.guestHouseImage && Array.isArray(gh.guestHouseImage)) {
+                    gh.guestHouseImage = gh.guestHouseImage.map(
+                        img => `${BASE_URL}/uploads/guestHouseImage/${img}`
+                    );
+                }
+
+                try {
+                    const reviews = await Review.countDocuments({ guesthouse: gh.id });
+                    gh.reviews = reviews;
+                } catch {
+                    gh.reviews = 0;
+                }
+
+                return gh;
+            })
+        );
 
         return res.status(200).json({
             success: true,
             statusCode: 200,
             NoOfGuestHouse: guestHousesWithUrls.length,
-            message: "Successfully fetched guesthouses near you.",
+            message: "Successfully fetched all active guesthouses.",
             data: guestHousesWithUrls
         });
 
     } catch (err) {
-        console.error("[GuestHouse Nearby] Error:", err);
+        console.error("[GuestHouse] Error:", err);
         return res.status(500).json({
             success: false,
             statusCode: 500,
-            message: "Internal server error while searching guesthouses.",
+            message: "Internal server error while fetching guesthouses.",
             error: err.message
         });
     }
@@ -116,9 +131,10 @@ exports.getAllGuestHouses = async (req, res) => {
 exports.getGuestHouseById = async (req, res) => {
     try {
         const { id } = req.params;
+        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5050}`;
 
-        // find guesthoue by Id
-        const guestHouse = await Guesthouse.findById(id);
+        // Find guesthouse by Id
+        const guestHouse = await Guesthouse.findById(id, { location: 0, createdAt: 0, __v: 0, contactNumber: 0, owner: 0 });
 
         if (!guestHouse) {
             return res.status(404).json({
@@ -129,17 +145,45 @@ exports.getGuestHouseById = async (req, res) => {
             });
         }
 
-
         const guestHouseObj = guestHouse.toObject();
 
-        // convert image into full url path
-        if (guestHouseObj.guestHouseImage) {
+        // Convert images into full URL paths
+        if (guestHouseObj.guestHouseImage && guestHouseObj.guestHouseImage.length > 0) {
             guestHouseObj.guestHouseImage = guestHouseObj.guestHouseImage.map(
                 img => `${BASE_URL}/uploads/guestHouseImage/${img}`
             );
+        } else {
+            guestHouseObj.guestHouseImage = [];
         }
 
-        // successfully fetch guesthouse details
+        const reviews = await Review.find({ guesthouse: id }).sort({ createdAt: -1 });
+
+        let rating = 0;
+        let reviewScore = 0;
+        let reviewsCount = reviews.length;
+        let reviewsText = "";
+
+        const getRatingComment = (avgRating) => {
+            if (avgRating <= 2) return "Poor";
+            if (avgRating < 4) return "Good";
+            return "Excellent";
+        };
+
+        if (reviewsCount > 0) {
+            const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+
+            // Calculate average rating
+            reviewScore = totalRating / reviewsCount;
+            rating = reviewScore.toFixed(1);
+            reviewsText = getRatingComment(reviewScore);
+        }
+
+        guestHouseObj.rating = Number(rating);
+        guestHouseObj.reviewsCount = reviewsCount;
+        guestHouseObj.reviewScore = reviewScore;
+        guestHouseObj.reviewsText = reviewsText;
+
+        // Successfully fetched guesthouse details
         return res.status(200).json({
             success: true,
             statusCode: 200,
@@ -148,76 +192,11 @@ exports.getGuestHouseById = async (req, res) => {
         });
 
     } catch (err) {
-        console.error("[ERROR][GuestHouse By ID]:", err.message);
+        console.error("[ERROR][GuestHouse By ID]:", err);
         return res.status(500).json({
             success: false,
             statusCode: 500,
             message: "Internal server error while fetching guesthouse.",
-            error: err.message
-        });
-    }
-};
-
-exports.searchGuestHouseNearBy = async (req, res) => {
-    try {
-        let { lng, lat, distance } = req.query;
-
-        lng = parseFloat(lng);
-        lat = parseFloat(lat);
-        distance = parseInt(distance);
-
-        if (isNaN(lng) || isNaN(lat) || isNaN(distance)) {
-            return res.status(400).json({
-                success: false,
-                statusCode: 400,
-                message: "Invalid query parameters. Provide valid lng, lat, and distance."
-            });
-        }
-
-        const guestHouses = await Guesthouse.find({
-            status: "active",
-            location: {
-                $near: {
-                    $geometry: { type: "Point", coordinates: [lng, lat] },
-                    $maxDistance: distance
-                }
-            }
-        });
-
-        if (!guestHouses || guestHouses.length === 0) {
-            return res.status(404).json({
-                success: false,
-                statusCode: 404,
-                NoOfGuestHouse: 0,
-                message: "No guesthouses found nearby.",
-                data: []
-            });
-        }
-
-
-        // Add full URLs for guestHouseImage
-        const guestHousesWithUrls = guestHouses.map(gh => {
-            const obj = gh.toObject();
-            if (obj.guestHouseImage) {
-                obj.guestHouseImage = obj.guestHouseImage.map(img => `${BASE_URL}/uploads/guestHouseImage/${img}`);
-            }
-            return obj;
-        });
-
-        return res.status(200).json({
-            success: true,
-            statusCode: 200,
-            NoOfGuestHouse: guestHousesWithUrls.length,
-            message: "Successfully fetched guesthouses near you.",
-            data: guestHousesWithUrls
-        });
-
-    } catch (err) {
-        console.error("[GuestHouse Nearby] Error:", err);
-        return res.status(500).json({
-            success: false,
-            statusCode: 500,
-            message: "Internal server error while searching guesthouses.",
             error: err.message
         });
     }
@@ -228,7 +207,7 @@ exports.getAllRoomsByGuesthouseId = async (req, res) => {
     try {
         const guesthouseId = req.params.guesthouseId; // route param se id nikalna
 
-        const rooms = await Room.find({ guesthouse: guesthouseId });
+        let rooms = await Room.find({ guesthouse: guesthouseId }, { createdAt: 0, __v: 0 }).lean();
 
         if (!rooms || rooms.length === 0) {
             return res.status(404).json({
@@ -236,6 +215,12 @@ exports.getAllRoomsByGuesthouseId = async (req, res) => {
                 message: "No rooms found for this guesthouse."
             });
         }
+
+        rooms = rooms.map(room => ({
+            id: room._id,
+            ...room,
+            _id: undefined   // remove _id
+        }));
 
         res.status(200).json({
             success: true,
@@ -503,35 +488,6 @@ exports.createBooking = async (req, res) => {
             }
         }
 
-
-
-        // let appliedPromo = null;
-        // if (promoCode) {
-        //     const promo = await Promo.findOne({ code: promoCode, isActive: true });
-        //     if (!promo) {
-        //         return res.status(404).json({
-        //             suucess: false,
-        //             message: "No promo code found"
-        //         })
-        //     }
-        //     else {
-        //         const promoStart = new Date(promo.startDate);
-        //         const promoEnd = new Date(promo.endDate);
-
-        //         if (checkInDate >= promoStart && checkOutDate <= promoEnd) {
-        //             if (promo.discountType === "flat") {
-        //                 amount -= promo.discountValue;
-        //             } else if (promo.discountType === "percentage") {
-        //                 amount -= (amount * promo.discountValue) / 100;
-        //             }
-        //             if (amount < 0) amount = 0;
-        //             appliedPromo = promo.code;
-        //         }
-        //     }
-        // }
-
-        // create booking
-
         const booking = new Booking({
             customer: customerId,
             guesthouse: guesthouseId,
@@ -556,7 +512,7 @@ exports.createBooking = async (req, res) => {
             { userId: guesthouseId, role: "guesthouse" }, // sender = guesthouse admin
             { userId: customerId, role: "customer" },        // receiver = customer
             "Booking Created",
-            `Your booking at ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Please complete your payment ${boking.finalAmount} to confirm your booking.`,
+            `Your booking at ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Please complete your payment ${booking.finalAmount} to confirm your booking.`,
             "payment",
             { bookingId: booking._id, guesthouseId: guesthouseId, roomId: roomId }
         );
@@ -665,8 +621,7 @@ exports.allBooking = async (req, res) => {
         console.log(customerId)
         // Get all bookings of customer - latest first
         const bookings = await Booking.find({ customer: customerId })
-            .sort({ createdAt: -1 }); // -1 means descending (latest first)
-
+            .sort({ createdAt: -1 }) // -1 means descending (latest first)
 
         res.status(200).json({
             success: true,
@@ -926,7 +881,7 @@ exports.getCancelBookings = async (req, res) => {
 // -------------------------------------------- REVIEWS ---------------------------------------
 exports.addReviewAndRating = async (req, res) => {
     try {
-        const { guestHouseId, roomId, rating, comment } = req.body;
+        const { guestHouseId, rating, comment } = req.body;
 
         //  Guesthouse check
         const guestHouse = await Guesthouse.findById(guestHouseId);
@@ -937,14 +892,6 @@ exports.addReviewAndRating = async (req, res) => {
             });
         }
 
-        const rooms = await Room.findOne({ _id: roomId, guesthouse: guestHouseId })
-        if (!rooms) {
-            return res.status(404).json({
-                success: false,
-                message: "No room found in given guesthouse."
-            })
-        }
-
         //  User info from JWT
         const user = req.user; // middleware se aata h
         const customerId = user.id;
@@ -952,7 +899,6 @@ exports.addReviewAndRating = async (req, res) => {
         // Review object create
         const review = new Review({
             guesthouse: guestHouseId,
-            room: roomId,
             customer: customerId,
             rating,
             comment
@@ -963,8 +909,7 @@ exports.addReviewAndRating = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: "Review added successfully",
-            review
+            message: "Review added successfully"
         });
 
     } catch (err) {
@@ -989,7 +934,7 @@ exports.getAllReviews = async (req, res) => {
             .sort({ createdAt: -1 }); // latest first
 
         if (!reviews || reviews.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 success: true,
                 message: "No reviews found.",
                 count: 0,
@@ -1020,10 +965,10 @@ exports.getReviewByGuestHouse = async (req, res) => {
 
         // Get all reviews of guesthouse
         const reviews = await Review.find({ guesthouse: id })
-            .populate("customer", "name email")
-            .populate("room", "roomNumber")
-            .sort({ createdAt: -1 })
-            .lean();
+            .populate("customer", "name profileImage")
+            .select("rating comment createdAt") // only needed fields
+            .lean()
+            .sort({ rating: -1 })
 
         if (!reviews || reviews.length === 0) {
             return res.status(404).json({
@@ -1039,12 +984,34 @@ exports.getReviewByGuestHouse = async (req, res) => {
             reviews.reduce((acc, r) => acc + (r.rating || 0), 0) /
             reviews.length;
 
+        const ratingDistribution = { Star5: 0, Star4: 0, Star3: 0, Star2: 0, Star1: 0 };
+
+        reviews.forEach(r => {
+            const star = Math.floor(r.rating); // e.g., 3.5 → 3
+            if (star === 5) ratingDistribution.Star5++;
+            else if (star === 4) ratingDistribution.Star4++;
+            else if (star === 3) ratingDistribution.Star3++;
+            else if (star === 2) ratingDistribution.Star2++;
+            else if (star === 1) ratingDistribution.Star1++;
+        });
+
+
+        const formattedReviews = reviews.map(r => ({
+            userName: r.customer?.name || "Anonymous",
+            profileImage: r.customer?.profileImage
+                ? `${BASE_URL}/uploads/profileImage/${r.customer.profileImage}` // full url
+                : null,
+            rating: r.rating,
+            date: r.createdAt ? r.createdAt.toISOString().split("T")[0] : null,
+            comment: r.comment
+        }));
+
         return res.status(200).json({
             success: true,
-            message: `Reviews fetched for guesthouse ${id}`,
-            count: reviews.length,
-            averageRating: avgRating.toFixed(1),
-            data: reviews
+            message: "Reviews fetched successfully",
+            averageRating: parseFloat(avgRating.toFixed(1)),
+            ratingDistribution,
+            reviews: formattedReviews
         });
 
     } catch (err) {
@@ -1057,54 +1024,55 @@ exports.getReviewByGuestHouse = async (req, res) => {
     }
 };
 
-exports.getReviewByRoom = async (req, res) => {
-    try {
-        const { id } = req.params; // roomId from route
+// exports.getReviewByRoom = async (req, res) => {
+//     try {
+//         const { id } = req.params; // roomId from route
 
-        const room = await Room.findById(id);
-        if (!room) {
-            return res.status(404).json({
-                success: false,
-                message: "Room not found."
-            });
-        }
+//         const room = await Room.findById(id);
+//         if (!room) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "Room not found."
+//             });
+//         }
 
-        const reviews = await Review.find({ room: id })
-            .populate("customer", "name email")
-            .sort({ createdAt: -1 })
-            .lean();
+//         const reviews = await Review.find({ room: id })
+//             .populate("customer", "name email")
+//             .sort({ createdAt: -1 })
+//             .lean();
 
-        if (!reviews || reviews.length === 0) {
-            return res.status(404).json({
-                success: true,
-                message: `No reviews found for room ${id}`,
-                count: 0,
-                data: []
-            });
-        }
+//         if (!reviews || reviews.length === 0) {
+//             return res.status(404).json({
+//                 success: true,
+//                 message: `No reviews found for room ${id}`,
+//                 count: 0,
+//                 data: []
+//             });
+//         }
 
-        // Average rating
-        const avgRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0) / reviews.length;
+//         // Average rating
+//         const avgRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0) / reviews.length;
 
-        return res.status(200).json({
-            success: true,
-            message: `Reviews fetched for room ${id}`,
-            count: reviews.length,
-            averageRating: avgRating.toFixed(1),
-            data: reviews
-        });
+//         return res.status(200).json({
+//             success: true,
+//             message: `Reviews fetched for room ${id}`,
+//             count: reviews.length,
+//             averageRating: avgRating.toFixed(1),
+//             data: reviews
+//         });
 
-    } catch (err) {
-        console.error("[REVIEW] Error fetching room reviews:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Error fetching room reviews.",
-            error: err.message
-        });
-    }
-};
+//     } catch (err) {
+//         console.error("[REVIEW] Error fetching room reviews:", err);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Error fetching room reviews.",
+//             error: err.message
+//         });
+//     }
+// };
 
 // -------------------------------------------- PROMOS ---------------------------------------
+
 exports.getAllPromos = async (req, res) => {
     try {
         const today = new Date();
@@ -1315,7 +1283,7 @@ exports.deleteNotification = async (req, res) => {
 exports.getfavorites = async (req, res) => {
     try {
         const customerId = req.user.id;
-        const favorites = await Favorites.find({ customer: customerId }).populate("room", "roomNumber guesthouse");
+        const favorites = await Favorites.find({ customer: customerId }).populate("guesthouse");
         if (!favorites || favorites.length === 0) {
             res.status(200).json({
                 success: true,
@@ -1325,7 +1293,7 @@ exports.getfavorites = async (req, res) => {
         }
         return res.status(200).json({
             success: true,
-            message: "Favorite rooms fetched successfully.",
+            message: "Favorite guesthouses fetched successfully.",
             count: favorites.length,
             data: favorites,
         });
@@ -1342,56 +1310,56 @@ exports.getfavorites = async (req, res) => {
 
 exports.addFavorites = async (req, res) => {
     try {
-        const roomId = req.params.id; // get from URL params
+        const guesthouseId = req.params.id; // corrected name
         const userId = req.user.id;
 
-        if (!roomId) {
+        if (!guesthouseId) {
             return res.status(400).json({
                 success: false,
-                message: "room ID is required.",
+                message: "Guesthouse ID is required.",
             });
         }
 
-        // Optional: check if guesthouse exists
-        const room = await Room.findById(roomId);
-        if (!room) {
+        // Check if guesthouse exists
+        const guesthouse = await Guesthouse.findById(guesthouseId);
+        if (!guesthouse) {
             return res.status(404).json({
                 success: false,
-                message: "room not found.",
+                message: "No guesthouse found.",
             });
         }
 
         // Check if already favorited
-        const existingFavorite = await Favorites.findOne({ customer: userId, room: roomId });
+        const existingFavorite = await Favorites.findOne({ customer: userId, guesthouse: guesthouseId });
         if (existingFavorite) {
             return res.status(400).json({
                 success: false,
-                message: "room is already in favorites.",
+                message: "Guesthouse is already in favorites.",
             });
         }
 
         // Add to favorites
         const favorite = new Favorites({
             customer: userId,
-            room: roomId,
+            guesthouse: guesthouseId,
         });
         await favorite.save();
 
         return res.status(201).json({
             success: true,
-            message: `room ${roomId} successfully added to favorites.`,
-            data: favorite,
+            message: `Guesthouse ${guesthouseId} successfully added to favorites.`
         });
 
     } catch (error) {
-        console.error("Error adding room to favorites:", error);
+        console.error("Error adding guesthouse to favorites:", error);
         return res.status(500).json({
             success: false,
-            message: "Failed to add room to favorites.",
+            message: "Failed to add guesthouse to favorites.",
             error: error.message,
         });
     }
 };
+
 
 exports.removeFavorite = async (req, res) => {
     try {
@@ -1432,45 +1400,50 @@ exports.removeFavorite = async (req, res) => {
 };
 
 // ---------------------------------------- get islands/ facilities / atolls
-exports.createAtoll = async (req, res) => {
+
+exports.getbedroom = async (req, res) => {
     try {
-        const { name } = req.body;
-        if (!name) {
-            return res.status(400).json({
+        const bedroom = await Bedroom.find().sort().select("-__v"); // Assuming only one document exists
+
+        if (!bedroom || bedroom.length === 0) {
+            return res.status(404).json({
                 success: false,
-                message: "Name field is required"
+                message: "No bedroom data found",
             });
         }
 
-        // Check if an atoll with same name exists already (optional)
-        const existing = await Atolls.findOne({ name });
-        if (existing) {
-            return res.status(400).json({
-                success: false,
-                message: "Atoll with this name already exists"
-            });
-        }
-
-        const atoll = new Atolls({
-            name
-            // createdAt is auto defaulted
+        // Sort numerically based on number in name
+        const sortedBedrooms = bedroom.sort((a, b) => {
+            const numA = parseInt(a.name); // e.g., "3 bedroom" => 3
+            const numB = parseInt(b.name);
+            return numA - numB;
         });
 
-        await atoll.save();
+        // Map to rename _id -> id
+        const formattedBedrooms = sortedBedrooms.map(b => {
+            const obj = b.toObject();
+            obj.id = obj._id;
+            delete obj._id;
+            return obj;
+        });
 
-        return res.status(201).json({
+        const response = {
             success: true,
-            data: atoll
-        });
-    } catch (err) {
-        console.error("[Atoll] createAtoll error:", err);
-        return res.status(500).json({
+            message: "Successfully fetched all bedroom types",
+            data: formattedBedrooms
+        };
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
             success: false,
-            message: "Internal server error",
-            error: err.message
+            message: "Error fetching bedroom data",
+            error: error.message,
         });
     }
 };
+
 
 exports.getAllAtolls = async (req, res) => {
     try {
@@ -1497,127 +1470,6 @@ exports.getAllAtolls = async (req, res) => {
     }
 };
 
-exports.createFacility = async (req, res) => {
-    try {
-        const { name } = req.body;
-
-        if (!name || name.trim() === '') {
-            return res.status(400).json({
-                success: false,
-                message: "Facility name is required"
-            });
-        }
-
-        // Optionally normalize name (e.g. trim, lowercase first letter, etc.)
-        const normalized = name.trim();
-
-        // Check duplicate
-        const existing = await Facility.findOne({ name: normalized });
-        if (existing) {
-            return res.status(400).json({
-                success: false,
-                message: "Facility already exists"
-            });
-        }
-
-        const facility = new Facility({
-            name: normalized
-
-        });
-
-        await facility.save();
-
-        return res.status(201).json({
-            success: true,
-            message: "Successfully add facility"
-        });
-    } catch (err) {
-        console.error("[Facility] createFacility error:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error",
-            error: err.message
-        });
-    }
-};
-
-exports.addBedroomNames = async (req, res) => {
-
-    try {
-        const { name } = req.body; // Expecting an array of bedroom names
-
-        if (!name) {
-            return res.status(400).json({ message: 'Please provide a bedroom name.' });
-        }
-
-        const bedroom = await Bedroom.findOneAndUpdate(
-            {},
-            { $addToSet: { names: name } }, // Adds each name to the array if not already present
-            { new: true, upsert: true }
-        );
-
-        res.status(200).json({ message: 'Bedroom names added successfully.', bedroom });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'An error occurred while adding bedroom names.' });
-    }
-};
-
-exports.setMaxPrice = async (req, res) => {
-    const { maxPrice } = req.body; // Expecting a string value for maxPrice
-
-    if (!maxPrice) {
-        return res.status(400).json({ message: 'Please provide a maxPrice.' });
-    }
-
-    try {
-        const bedroom = await Bedroom.findOneAndUpdate(
-            {},
-            { $set: { maxPrice } },
-            { new: true, upsert: true }
-        );
-
-        res.status(200).json({ message: 'Max price set successfully.', bedroom });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'An error occurred while setting the max price.' });
-    }
-};
-
-exports.getbedroom = async (req, res) => {
-    try {
-        const bedroom = await Bedroom.findOne(); // Assuming only one document exists
-
-        if (!bedroom) {
-            return res.status(404).json({
-                success: false,
-                message: "No bedroom data found",
-            });
-        }
-
-        // Constructing the response as per your specified structure
-        const response = {
-            success: true,
-            message: "Successfully fetched all bedroom types",
-            maxPrice: bedroom.maxPrice.toString(),
-            data: bedroom.names.map(name => ({
-                id: bedroom._id.toString(),
-                name: name,
-            })),
-        };
-
-        res.status(200).json(response);
-    } catch (error) {
-        console.error(error); // Log the error for debugging
-        res.status(500).json({
-            success: false,
-            message: "Error fetching bedroom data",
-            error: error.message,
-        });
-    }
-};
-
-
 exports.getAllfacilities = async (req, res) => {
     try {
         const facilities = await Facility.find({}, { _id: 1, name: 1 }).lean().sort({ createdAt: -1 });
@@ -1643,82 +1495,40 @@ exports.getAllfacilities = async (req, res) => {
     }
 };
 
-exports.createIslands = async (req, res) => {
-    try {
-        const { name, atollId } = req.body;
-
-        // Validate input
-        if (!name || !atollId) {
-            return res.status(400).json({
-                success: false,
-                message: "name and atollId are required."
-            });
-        }
-
-        // Check for existing island
-        const existingIsland = await Island.findOne({ name });
-        if (existingIsland) {
-            return res.status(400).json({
-                success: false,
-                message: "Island already exists."
-            });
-        }
-
-        // Create new island
-        const newIsland = new Island({
-            name,
-            atoll: atollId,
-            createdAt: new Date()
-        });
-
-        await newIsland.save();
-
-        return res.status(201).json({
-            success: true,
-            message: "Island successfully added.",
-            data: newIsland
-        });
-    } catch (err) {
-        console.error("[Island] createIsland error:", err);
-        return res.status(500).json({
-            success: false,
-            message: "An error occurred while adding the island.",
-            error: err.message
-        });
-    }
-};
-
-
 exports.getAllIslands = async (req, res) => {
     try {
-        // Use req.query to get the atollId from the query string
-        const { atollId } = req.query;
+        const { id } = req.params;
 
-        // Validate that atollId is provided
-        if (!atollId) {
+        if (!id) {
             return res.status(400).json({
                 success: false,
-                message: "atollId query parameter is required"
+                message: "atollId parameter is required"
             });
         }
 
-        // Fetch islands that match the atollId
-        const islands = await Island.find({ atoll: atollId });
+        const islands = await Island.find({ atoll: id }).select("-__v -createdAt -updatedAt"); // extra fields hata sakte ho
 
-        // Return the result
+        // Convert _id -> id
+        const formattedIslands = islands.map(island => {
+            const obj = island.toObject();
+            obj.id = obj._id;   // new key
+            delete obj._id;     // remove old _id
+            return obj;
+        });
+
         res.status(200).json({
             success: true,
-            count: islands.length,
-            data: islands
+            count: formattedIslands.length,
+            data: formattedIslands
         });
     } catch (error) {
-        // Handle any errors that occur
         res.status(500).json({
             success: false,
             message: "Error fetching islands",
-            error: error.message // It's helpful to include the error message for debugging
+            error: error.message
         });
     }
 };
+
 
 
