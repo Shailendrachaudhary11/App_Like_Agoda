@@ -9,111 +9,110 @@ exports.register = async (req, res) => {
     try {
         let { name, email, phone, password, role, address } = req.body;
 
-        if (!name || !email || !password || !phone) {
+        //Required fields
+        if (!name || !email || !phone || !password) {
             return res.status(400).json({
                 success: false,
-                message: "Name, Email, Password, phoneNumber are required.",
+                message: "Name, Email, Password, and Phone are required."
             });
         }
 
-        if (password.length < 6) {
+        //Password length
+        if (password.length < 6 || password.length > 20) {
             return res.status(400).json({
                 success: false,
-                message: "Password must be at least 6 characters.",
+                message: "Password must be between 6 and 20 characters."
             });
         }
 
+        //Normalize email
         email = email.toLowerCase().trim();
 
-        // Email or phone check
-        const [existingUser, existingPhone] = await Promise.all([
-            User.findOne({ email }),
-            User.findOne({ phone })
-        ]);
+        //Validate phone format
+        const phoneRegex = /^[0-9]{10}$/;
+        if (!phoneRegex.test(phone)) {
+            return res.status(400).json({ success: false, message: "Phone must be 10 digits." });
+        }
+
+        //Check duplicates (email or phone) in one query
+        const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
         if (existingUser) {
-            return res.status(400).json({
-                success: false,
-                statusCode: 400,
-                message: "User already registered with this email.",
-            });
-        }
-        if (existingPhone) {
-            return res.status(400).json({
-                success: false,
-                statusCode: 400,
-                message: "User already registered with this phone number.",
-            });
+            const msg = existingUser.email === email 
+                ? "Email already registered." 
+                : "Phone number already registered.";
+            return res.status(400).json({ success: false, message: msg });
         }
 
-        //  Default role = "customer" agar role nahi bheja gaya
+        //Validate role
+        const allowedRoles = ["customer", "guesthouse"];
         let userRole = role ? role.toLowerCase() : "customer";
+        if (!allowedRoles.includes(userRole)) userRole = "customer";
 
+        //Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // New User
+        //Create new user
         const newUser = new User({
-            name,
+            name: name.trim().charAt(0).toUpperCase() + name.trim().slice(1),
             email,
             phone,
-            address: address || null,
+            address: address?.trim() || null,
             password: hashedPassword,
             role: userRole,
             profileImage: req.file ? req.file.filename : null,
-            status: userRole === "customer" ? "approved" : "pending" //  Customers auto-approved
+            status: userRole === "customer" ? "approved" : "pending"
         });
 
-        //  Notification only if guesthouse
+        //Save user first
+        await newUser.save();
+
+        // Notify admin if guesthouse
         if (userRole === "guesthouse") {
             const masterAdmin = await Admin.findOne({ role: "admin" });
-
             if (masterAdmin) {
                 await createNotification(
-                    { userId: newUser._id, role: "guesthouse" }, // sender
-                    { userId: masterAdmin._id, role: "admin" },   // receiver
+                    { userId: newUser._id, role: "guesthouse" },
+                    { userId: masterAdmin._id, role: "admin" },
                     "New Guesthouse Registration",
                     `Guesthouse "${newUser.name}" has registered and is waiting for approval.`,
                     "system",
                     { guesthouseId: newUser._id }
                 );
-                console.log("Notification sent");
             } else {
-                console.warn("[NOTIFICATION] No master admin found in DB.");
+                console.warn("[NOTIFICATION] No master admin found.");
             }
         }
 
-        await newUser.save();
-
+        // Return response
         return res.status(201).json({
             success: true,
-            statusCode: 201,
-            message:
-                userRole === "customer"
-                    ? "Customer registered & approved successfully."
-                    : "User created successfully. Wait for admin approval.",
-            Id: newUser._id
+            message: userRole === "customer"
+                ? "Customer registered & approved successfully."
+                : "Guesthouse registered. Wait for admin approval.",
+            id: newUser._id
         });
 
     } catch (err) {
-        console.error("[AUTH] Error during registration:", err.message);
+        console.error("[AUTH] Registration error:", err.stack);
         return res.status(500).json({
             success: false,
-            statusCode: 500,
-            message: "Something went wrong during registration.",
-            error: err.message,
+            message: "Registration failed.",
+            error: err.message
         });
     }
 };
+
 
 exports.login = async (req, res) => {
     try {
         let { email, phone, password } = req.body;
 
-        // Normalize email
+        //malize email
         if (email) {
             email = email.toLowerCase().trim();
         }
 
-        // Validate required fields
+        //idate required fields
         if (!email && !phone) {
             return res.status(400).json({
                 success: false,
@@ -130,7 +129,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Find user by email or phone
+        //d user by email or phone
         const query = email ? { email } : { phone };
         const user = await User.findOne(query);
 
@@ -143,7 +142,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Verify password
+        //ify password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             console.warn("[AUTH] Login failed: invalid password");
@@ -154,7 +153,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Check account status
+        //ck account status
         if (user.status !== "approved") {
             return res.status(403).json({
                 success: false,
@@ -163,14 +162,14 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Generate JWT token
+        //erate JWT token
         const token = jwt.sign(
             { id: user._id, role: user.role, email: user.email },
             process.env.JWT_SECRET,
             { expiresIn: "20d" }
         );
 
-        // Format profile image URL
+        //mat profile image URL
         const profileImage = user.profileImage
             ? `${process.env.BASE_URL || ""}/uploads/profileImage/${user.profileImage}`
             : null;
@@ -206,7 +205,7 @@ exports.getMyProfile = async (req, res) => {
     try {
         const BASE_URL = process.env.BASE_URL;
 
-        // Build profile image URL
+        //ld profile image URL
         const profileImageUrl = req.user.profileImage
             ? `${BASE_URL}/uploads/profileImage/${req.user.profileImage}`
             : null;
@@ -260,7 +259,7 @@ exports.updateProfile = async (req, res) => {
             });
         }
 
-        // Update name if provided
+        //ate name if provided
         if (req.body.name) {
             let name = req.body.name.toString().trim();
             if (name.length < 4) {
@@ -273,7 +272,7 @@ exports.updateProfile = async (req, res) => {
             user.name = name.charAt(0).toUpperCase() + name.slice(1);
         }
 
-        // Update email if provided
+        //ate email if provided
         if (req.body.email) {
             let email = req.body.email.toString().trim().toLowerCase();
 
@@ -286,7 +285,7 @@ exports.updateProfile = async (req, res) => {
                 });
             }
 
-            // Check if email already exists for another user
+            //ck if email already exists for another user
             const existingEmail = await User.findOne({
                 email,
                 _id: { $ne: req.user._id }
@@ -302,7 +301,7 @@ exports.updateProfile = async (req, res) => {
             user.email = email;
         }
 
-        // Update phone if provided
+        //ate phone if provided
         if (req.body.phone) {
             let phone = req.body.phone.toString().trim();
 
@@ -315,7 +314,7 @@ exports.updateProfile = async (req, res) => {
                 });
             }
 
-            // Check if phone already exists for another user
+            //ck if phone already exists for another user
             const existingPhone = await User.findOne({
                 phone,
                 _id: { $ne: req.user._id }
@@ -331,7 +330,7 @@ exports.updateProfile = async (req, res) => {
             user.phone = phone;
         }
 
-        // Update profile image if uploaded
+        //ate profile image if uploaded
         if (req.file) {
             user.profileImage = req.file.filename;
         }
@@ -344,7 +343,7 @@ exports.updateProfile = async (req, res) => {
 
         console.log("Profile updated successfully:", user._id);
 
-        // Construct profile image URL
+        //struct profile image URL
         const profileImageUrl = user.profileImage
             ? `${process.env.BASE_URL || ""}/uploads/profileImage/${user.profileImage}`
             : null;
@@ -369,7 +368,7 @@ exports.changePassword = async (req, res) => {
     try {
         const { oldPassword, newPassword, confirmPassword } = req.body;
 
-        // Check all fields
+        //ck all fields
         if (!oldPassword || !newPassword || !confirmPassword) {
             return res.status(400).json({
                 success: false,
@@ -378,7 +377,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // Prevent reusing old password
+        //vent reusing old password
         if (oldPassword === newPassword) {
             return res.status(409).json({
                 success: false,
@@ -387,7 +386,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // Check if newPassword and confirmPassword match
+        //ck if newPassword and confirmPassword match
         if (newPassword !== confirmPassword) {
             return res.status(400).json({
                 success: false,
@@ -396,7 +395,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // Always fetch user from DB to ensure password is available
+        //ays fetch user from DB to ensure password is available
         const user = await User.findById(req.user.id);
         if (!user) {
             return res.status(404).json({
@@ -406,7 +405,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // Check old password
+        //ck old password
         const isMatch = await bcrypt.compare(oldPassword, user.password);
         if (!isMatch) {
             return res.status(401).json({
@@ -416,7 +415,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // Hash new password and save
+        //h new password and save
         user.password = await bcrypt.hash(newPassword, 10);
         await user.save();
 
@@ -451,26 +450,26 @@ exports.forgotPassword = async (req, res) => {
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-        // Generate OTP
+        //erate OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        user.otp = otp; // save OTP in DB
+        user.otp = otp; //e OTP in DB
         await user.save();
 
-        // Generate JWT token for OTP verification
+        //erate JWT token for OTP verification
         const token = jwt.sign(
             { email: user.email, id: user._id, name: user.name },
             process.env.JWT_SECRET,
             { expiresIn: "10m" }
         );
 
-        // Send OTP via email
+        //d OTP via email
         const emailSent = await sendEmail(user.email, "Password Reset OTP", `Your OTP is ${otp}. It will expire in 10 minutes.`);
         if (!emailSent) return res.status(500).json({ success: false, message: "Failed to send OTP email." });
 
         return res.status(200).json({
             success: true,
             message: "OTP sent to your email.",
-            token // client must send this in Authorization header
+            token //ent must send this in Authorization header
         });
 
     } catch (err) {
@@ -493,14 +492,14 @@ exports.verifyOtp = async (req, res) => {
 
         if (user.otp !== otp.toString()) return res.status(400).json({ success: false, message: "Invalid OTP" });
 
-        // OTP correct → generate reset token
+        // correct → generate reset token
         const resetToken = jwt.sign(
             { email: user.email, id: user._id, action: "resetPassword" },
             process.env.JWT_SECRET,
             { expiresIn: "10m" }
         );
 
-        // Clear OTP after use
+        //ar OTP after use
         user.otp = undefined;
         user.otpExpiry = undefined;
         await user.save();
@@ -516,7 +515,7 @@ exports.verifyOtp = async (req, res) => {
 exports.resetPassword = async (req, res) => {
     try {
         const { newPassword, confirmPassword } = req.body;
-        const decoded = req.user; // from verifyToken middleware
+        const decoded = req.user; //m verifyToken middleware
 
         if (!newPassword || !confirmPassword)
             return res.status(400).json({ success: false, message: "New password and confirm password are required" });
@@ -533,9 +532,9 @@ exports.resetPassword = async (req, res) => {
         const user = await User.findOne({ email: decoded.email, _id: decoded.id });
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-        // Update password
+        //ate password
         user.password = await bcrypt.hash(newPassword, 10);
-        user.otp = null; // clear OTP after success
+        user.otp = null; //ar OTP after success
         await user.save();
 
         return res.status(200).json({ success: true, message: "Password reset successfully" });

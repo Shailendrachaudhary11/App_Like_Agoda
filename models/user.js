@@ -13,7 +13,7 @@ const UserSchema = new mongoose.Schema({
     },
     profileImage: { type: String },
     status: { type: String, enum: ['pending', 'approved', 'suspended','reject'], default: 'pending' },
-    otp: { type: String },                // OTP field
+    otp: { type: String },                // OTP field  
     otpExpiry: { type: Date },
     createdAt: { type: Date, default: Date.now }
 });
