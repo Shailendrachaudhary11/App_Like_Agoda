@@ -17,7 +17,6 @@ const guesthouseSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     facilities: {
         type: [String],
-        enum: ['Air Conditioning / Heater', 'Free Wi-fi', 'Complimentary Breakfast', 'Room Service', 'Swimming Pool', 'Laundry Service', 'Parking', 'Restaurant / Café on Site', '24-Hour Front Desk', 'Security / CCTV / Safe Box'],
         default: []
     },
     atolls: String,

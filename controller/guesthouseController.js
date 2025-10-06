@@ -402,39 +402,27 @@ exports.updateRoom = async (req, res) => {
         }
 
         const {
-            roomNumber,
-            title,
+            roomCategory,
+            bedType,
             description,
             amenities,
             priceWeekly,
             pricePerNight,
             priceMonthly,
-            capacity
+            capacity,
+            active
         } = req.body;
 
-        // Check if new roomNumber already exists in this guesthouse
-        if (roomNumber && roomNumber !== room.roomNumber) {
-            const duplicate = await Room.findOne({
-                guesthouse: room.guesthouse._id,
-                roomNumber: roomNumber
-            });
-            if (duplicate) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Room number ${roomNumber} already exists in this guesthouse.`
-                });
-            }
-            room.roomNumber = roomNumber;
-        }
-
-        // Update other fields if provided
-        if (title) room.title = title;
+        // Update fields if provided
+        if (roomCategory) room.roomCategory = roomCategory;
+        if (bedType) room.bedType = bedType;
         if (description) room.description = description;
         if (amenities) room.amenities = amenities;
         if (pricePerNight) room.pricePerNight = pricePerNight;
         if (priceWeekly) room.priceWeekly = priceWeekly;
         if (priceMonthly) room.priceMonthly = priceMonthly;
         if (capacity) room.capacity = capacity;
+        if (active) room.active = active;
 
         // Handle new images (replace old completely)
         if (req.files && req.files.length > 0) {

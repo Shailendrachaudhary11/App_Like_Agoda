@@ -1921,6 +1921,14 @@ exports.createIslands = async (req, res) => {
             });
         }
 
+        const atoll = await Atolls.findById(atollId);
+        if (!atoll) {
+            return res.status(404).json({
+                success: false,
+                message: "No atoll found"
+            })
+        }
+
         // Check for existing island
         const existingIsland = await Island.findOne({ name });
         if (existingIsland) {

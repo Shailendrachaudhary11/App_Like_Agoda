@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
+require('dotenv').config();  // to load .env file
 
 const connectDB = async () => {
     try {
-        await mongoose.connect('mongodb://127.0.0.1:27017/AgodaDB', {
+        const mongoURI = process.env.MONGO_URI;
+        await mongoose.connect(mongoURI, {
         });
         console.log('MongoDB connected....');
     } catch (error) {

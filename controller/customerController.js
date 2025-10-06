@@ -164,10 +164,13 @@ exports.getGuestHouseById = async (req, res) => {
         let reviewsText = "";
 
         const getRatingComment = (avgRating) => {
-            if (avgRating <= 2) return "Poor";
-            if (avgRating < 4) return "Good";
-            return "Excellent";
+            if (avgRating >= 4.5) return "Excellent";
+            else if (avgRating >= 4.0) return "Very Good";
+            else if (avgRating >= 3.5) return "Good";
+            else if (avgRating >= 3.0) return "Average";
+            else return "Poor";
         };
+
 
         if (reviewsCount > 0) {
             const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);

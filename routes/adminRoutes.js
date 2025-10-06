@@ -60,7 +60,7 @@ router.delete("/notifications/:notificationId/delete", auth(["admin"]), adminCon
 
 router.post("/addBedroomNames", auth(["admin"]), adminController.addBedroomNames);
 router.post("/setMaxPrice", auth(["admin"]), adminController.setMaxPrice);
-router.post("/customer/facilities/add", auth(["admin"]), adminController.createFacility);
+router.post("/facilities/add", auth(["admin"]), adminController.createFacility);
 router.post("/atolls/add", auth(["admin"]), adminController.createAtoll);
 router.post("/islands/add", auth(["admin"]), adminController.createIslands);
 

@@ -37,8 +37,8 @@ exports.register = async (req, res) => {
         //Check duplicates (email or phone) in one query
         const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
         if (existingUser) {
-            const msg = existingUser.email === email 
-                ? "Email already registered." 
+            const msg = existingUser.email === email
+                ? "Email already registered."
                 : "Phone number already registered.";
             return res.status(400).json({ success: false, message: msg });
         }
@@ -59,9 +59,14 @@ exports.register = async (req, res) => {
             address: address?.trim() || null,
             password: hashedPassword,
             role: userRole,
-            profileImage: req.file ? req.file.filename : null,
+            profileImage: null,
             status: userRole === "customer" ? "approved" : "pending"
         });
+
+        if (req.file) {
+            newUser.profileImage = req.file.filename;
+        }
+
 
         //Save user first
         await newUser.save();
