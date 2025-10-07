@@ -89,7 +89,7 @@ exports.login = async (req, res) => {
         }
 
         // Find admin user by email (case-insensitive)
-        const adminUser = await AdminUser.findOne({ email: email.toLowerCase() }).lean();
+        const adminUser = await AdminUser.findOne({ email: email.toLowerCase() });
         if (!adminUser) {
             console.log("Admin not found:", email);
             return res.status(401).json({
@@ -1389,46 +1389,85 @@ exports.deleteCustomer = async (req, res) => {
 // -------------------------------------------- BOOKING ---------------------------------------
 exports.getAllBooking = async (req, res) => {
     try {
-        const customerId = req.user.id;
 
-        // Get all bookings of customer - latest first, and populate customer name
         const bookings = await Booking.find()
-            .select("_id customer  checkIn checkOut status finalAmount nights")
             .sort({ createdAt: -1 })
-            .populate('customer', 'name')          // optional: room name
+            .populate({
+                path: "guesthouse",
+                select: "name address guestHouseImage",
+            })
+            .select("-__v -createdAt -updatedAt");
 
+        const formattedBookings = bookings.map((booking) => {
+            const guesthouse = booking.guesthouse || {};
+            let guestHouseImg = "";
+
+            if (guesthouse.guestHouseImage) {
+                if (Array.isArray(guesthouse.guestHouseImage)) {
+                    guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0].trim()}`;
+                }
+            }
+
+            // Room count logic
+            let roomCount = 0;
+            if (Array.isArray(booking.room)) {
+                roomCount = booking.room.length;
+            } else if (typeof booking.room === "number") {
+                roomCount = booking.room;
+            } else if (booking.room) {
+                roomCount = 1;
+            }
+
+            return {
+                id: booking._id,
+                guesthouse: guesthouse._id || null,
+                guestHouseImg: guestHouseImg,
+                guestHouseName: guesthouse.name || "",
+                guestHouseAddress: guesthouse.address || "",
+                checkIn: booking.checkIn
+                    ? new Date(booking.checkIn).toISOString().split("T")[0]
+                    : "",
+                checkOut: booking.checkOut
+                    ? new Date(booking.checkOut).toISOString().split("T")[0]
+                    : "",
+                room: roomCount,
+                guest: booking.guest,
+                amount: booking.amount,
+                finalAmount: booking.finalAmount,
+                status: booking.status,
+                paymentStatus: booking.paymentStatus,
+            };
+        });
 
         res.status(200).json({
             success: true,
             message: "Successfully fetched your bookings.",
-            count: bookings.length,
-            data: bookings
+            count: formattedBookings.length,
+            data: formattedBookings,
         });
-
     } catch (error) {
+        console.error("Error fetching bookings:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching all bookings.",
-            error: error.message
+            error: error.message,
         });
     }
 };
 
 exports.getBookingById = async (req, res) => {
     try {
-        const bookingId = req.params.id; // URL से bookingId लो
+        const { id } = req.params; // booking id from URL
 
-        if (!bookingId) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide booking Id."
-            });
-        }
-
-        const booking = await Booking.findById(bookingId)
-            .select("-password")     // room details (अगर schema में है)
-            .populate('customer', 'name email phone')
-            .populate('guesthouse', 'name address')
+        const booking = await Booking.findById(id)
+            .populate({
+                path: "guesthouse",
+                select: "name address guestHouseImage",
+            })
+            .populate({
+                path: "room",
+                select: "roomCategory price" // room model fields
+            })
 
 
         if (!booking) {
@@ -1438,18 +1477,54 @@ exports.getBookingById = async (req, res) => {
             });
         }
 
-        return res.status(200).json({
-            success: true,
-            message: "Successfully fetched booking.",
-            data: booking
-        });
+        const guesthouse = booking.guesthouse || {};
+        const room = booking.room;
 
-    } catch (err) {
-        console.error("[BOOKING] Error fetching booking by id:", err.message);
-        return res.status(500).json({
+        // Guest House Image
+        let guestHouseImg = "";
+        if (guesthouse.guestHouseImage) {
+            if (Array.isArray(guesthouse.guestHouseImage) && guesthouse.guestHouseImage.length > 0) {
+                guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0].trim()}`;
+            } else if (typeof guesthouse.guestHouseImage === "string") {
+                guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage.split(",")[0].trim()}`;
+            }
+        }
+
+        // Room count and type
+        let roomCount = 1; // default 1 because schema is single room
+        let roomType = booking.room && booking.room.roomCategory ? booking.room.roomCategory : "";
+
+
+        const formattedBooking = {
+            id: booking._id,
+            guesthouse: guesthouse._id || null,
+            guestHouseImg: guestHouseImg,
+            guestHouseName: guesthouse.name || "",
+            guestHouseAddress: guesthouse.address || "",
+            checkIn: booking.checkIn ? new Date(booking.checkIn).toISOString().split("T")[0] : "",
+            checkOut: booking.checkOut ? new Date(booking.checkOut).toISOString().split("T")[0] : "",
+            room: roomCount,
+            roomType: roomType || "",
+            guest: booking.guest || {}, // guest info
+            amount: booking.amount || 0,
+            finalAmount: booking.finalAmount || 0,
+            status: booking.status || "",
+            paymentStatus: booking.paymentStatus || "",
+            createdAt: booking.createdAt ? new Date(booking.createdAt).toISOString().split("T")[0] : "",
+            updatedAt: booking.updatedAt ? new Date(booking.updatedAt).toISOString().split("T")[0] : "",
+        };
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetched booking details.",
+            data: formattedBooking
+        });
+    } catch (error) {
+        console.error("Error fetching booking:", error);
+        res.status(500).json({
             success: false,
-            message: "Internal server error while fetching booking",
-            error: err.message
+            message: "Error fetching booking.",
+            error: error.message
         });
     }
 };
@@ -1491,54 +1566,98 @@ exports.pastBooking = async (req, res) => {
 exports.upcomingBookings = async (req, res) => {
     try {
         const today = new Date();
+        today.setHours(0, 0, 0, 0); // din ka start time fix
 
-        const upcomingBookings = await Booking.find({
-            checkIn: { $gt: today },
-            status: { $in: ["pending", "confirmed"] }
+        const bookings = await Booking.find({
+            checkIn: { $gte: today },  // future ya aaj ki bookings
+            status: { $in: ["pending", "confirmed"] } // active bookings only
         })
-            .select("_id customer  checkIn checkOut status finalAmount nights")
-            .populate('customer', 'name')
-            .sort({ checkIn: 1 });
+            .sort({ checkIn: 1 }) // najdik wali trip pehle
+            .populate({
+                path: "guesthouse",
+                select: "name address guestHouseImage",
+            })
+            .select("-__v -createdAt -updatedAt");
 
-
-        if (upcomingBookings.length === 0) {
+        if (!bookings || bookings.length === 0) {
             return res.status(200).json({
                 success: true,
-                message: "No upcoming booking found"
-            })
+                message: "No upcoming bookings found.",
+                count: 0,
+                data: []
+            });
         }
 
-        res.status(200).json({
+        const formattedBookings = bookings.map((booking) => {
+            const guesthouse = booking.guesthouse || {};
+            let guestHouseImg = "";
+
+            if (guesthouse.guestHouseImage) {
+                if (Array.isArray(guesthouse.guestHouseImage)) {
+                    guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0].trim()}`;
+                } else if (typeof guesthouse.guestHouseImage === "string") {
+                    guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage.split(",")[0].trim()}`;
+                }
+            }
+
+            // Room count logic
+            let roomCount = 0;
+            if (Array.isArray(booking.room)) {
+                roomCount = booking.room.length;
+            } else if (typeof booking.room === "number") {
+                roomCount = booking.room;
+            } else if (booking.room) {
+                roomCount = 1;
+            }
+
+            return {
+                id: booking._id,
+                guesthouse: guesthouse._id || null,
+                guestHouseImg: guestHouseImg,
+                guestHouseName: guesthouse.name || "",
+                guestHouseAddress: guesthouse.address || "",
+                checkIn: booking.checkIn
+                    ? new Date(booking.checkIn).toISOString().split("T")[0]
+                    : "",
+                checkOut: booking.checkOut
+                    ? new Date(booking.checkOut).toISOString().split("T")[0]
+                    : "",
+                room: roomCount,
+                guest: booking.guest,
+                amount: booking.amount,
+                finalAmount: booking.finalAmount,
+                status: booking.status,
+                paymentStatus: booking.paymentStatus,
+            };
+        });
+
+        return res.status(200).json({
             success: true,
-            message: "Successfully fetch upcoming Bookings",
-            count: upcomingBookings.length,
-            data: upcomingBookings
-        })
+            message: "Upcoming bookings fetched successfully.",
+            count: formattedBookings.length,
+            data: formattedBookings
+        });
 
     } catch (error) {
+        console.error("Error fetching upcoming bookings:", error);
         res.status(500).json({
             success: false,
-            message: "Error to fetching upcoming booking.",
-            Error: error
-        })
+            message: "Error fetching upcoming trips.",
+            error: error.message
+        });
     }
 }
 
 exports.getCancelBookings = async (req, res) => {
     try {
-        const customerId = req.user.id;
 
-        if (!customerId) {
-            return res.status(400).json({
-                success: false,
-                message: "Customer ID is required."
-            });
-        }
 
         const bookings = await Booking.find({ status: "cancelled" })
-            .select("_id customer  checkIn checkOut status finalAmount nights")
-            .populate('customer', 'name')
-            .sort({ checkIn: 1 });
+            .populate({
+                path: "guesthouse",
+                select: "name address guestHouseImage",
+            })
+            .select("-__v -createdAt -updatedAt");
 
         if (!bookings || bookings.length === 0) {
             return res.status(200).json({
@@ -1549,14 +1668,43 @@ exports.getCancelBookings = async (req, res) => {
             });
         }
 
-        //  Return cancelled bookings
-        return res.status(200).json({
-            success: true,
-            count: bookings.length,
-            message: "Cancelled bookings fetched successfully.",
-            data: bookings
+        const formattedBookings = bookings.map((booking) => {
+            const guesthouse = booking.guesthouse || {};
+            let guestHouseImg = "";
+
+            if (guesthouse.guestHouseImage) {
+                if (Array.isArray(guesthouse.guestHouseImage)) {
+                    guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0].trim()}`;
+                }
+            }
+
+            return {
+                id: booking._id,
+                guesthouse: guesthouse._id || null,
+                guestHouseImg: guestHouseImg,
+                guestHouseName: guesthouse.name || "",
+                guestHouseAddress: guesthouse.address || "",
+                checkIn: booking.checkIn
+                    ? new Date(booking.checkIn).toISOString().split("T")[0]
+                    : "",
+                checkOut: booking.checkOut
+                    ? new Date(booking.checkOut).toISOString().split("T")[0]
+                    : "",
+                room: booking.room,
+                guest: booking.guest,
+                amount: booking.amount,
+                finalAmount: booking.finalAmount,
+                status: booking.status,
+                paymentStatus: booking.paymentStatus,
+            };
         });
 
+        res.status(200).json({
+            success: true,
+            count: formattedBookings.length,
+            message: "Cancelled bookings fetched successfully.",
+            data: formattedBookings
+        });
     } catch (error) {
         res.status(500).json({
             success: false,

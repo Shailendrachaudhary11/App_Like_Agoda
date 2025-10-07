@@ -107,7 +107,6 @@ exports.register = async (req, res) => {
     }
 };
 
-
 exports.login = async (req, res) => {
     try {
         let { email, phone, password } = req.body;
@@ -464,7 +463,7 @@ exports.forgotPassword = async (req, res) => {
         const token = jwt.sign(
             { email: user.email, id: user._id, name: user.name },
             process.env.JWT_SECRET,
-            { expiresIn: "10m" }
+            { expiresIn: "20m" }
         );
 
         //d OTP via email
@@ -501,7 +500,7 @@ exports.verifyOtp = async (req, res) => {
         const resetToken = jwt.sign(
             { email: user.email, id: user._id, action: "resetPassword" },
             process.env.JWT_SECRET,
-            { expiresIn: "10m" }
+            { expiresIn: "20m" }
         );
 
         //ar OTP after use

@@ -11,6 +11,7 @@ const bookingSchema = new mongoose.Schema({
 
   // Amount details
   amount: { type: Number, required: true },       // base price
+  guest: { type: Number },
   discount: { type: Number, default: 0 },         // discount applied
   finalAmount: { type: Number, required: true },  // after discount
   promoCode: { type: String, default: null },     // promo code used
