@@ -18,7 +18,7 @@ exports.manageGuestHouse = async (req, res) => {
             address,
             city,
             state,
-            location, // { type: "Point", coordinates: [lng, lat] }
+            location,
             contactNumber,
             description,
             price,
@@ -40,7 +40,6 @@ exports.manageGuestHouse = async (req, res) => {
         }
 
         const images = req.files.map(file => file.filename);
-
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
         const imagesWithUrl = images.map(fname => `${BASE_URL}/uploads/guestHouseImage/${fname}`);
 
@@ -88,9 +87,10 @@ exports.manageGuestHouse = async (req, res) => {
             guesthouse.islands = islands || guesthouse.islands;
             guesthouse.status = status || guesthouse.status;
 
-
             if (price != null) guesthouse.price = price;
-            if (stars != null) guesthouse.stars = stars;
+
+            // Always store stars as float (with 1 decimal)
+            if (stars != null) guesthouse.stars = parseFloat(parseFloat(stars).toFixed(1));
 
             if (facilities) {
                 guesthouse.facilities = Array.isArray(facilities)
@@ -107,15 +107,17 @@ exports.manageGuestHouse = async (req, res) => {
                 message: "Guesthouse updated successfully.",
                 data: {
                     guesthouseId: guesthouse._id,
+                    stars: guesthouse.stars.toFixed(1), // Always return as float (e.g. "4.0")
                     images: imagesWithUrl
                 }
             });
+
         } else {
-            // Create new guesthouse
+            //  Create new guesthouse
             if (!name || !price) {
                 return res.status(400).json({
                     success: false,
-                    message: "Name, and price are required for new guesthouse"
+                    message: "Name and price are required for new guesthouse"
                 });
             }
 
@@ -133,12 +135,12 @@ exports.manageGuestHouse = async (req, res) => {
                 address,
                 city,
                 state,
+                stars: stars ? parseFloat(parseFloat(stars).toFixed(1)) : 0.0, //  Always float
                 location: locObj,
                 contactNumber,
                 description,
                 price,
                 guestHouseImage: images,
-                stars: stars || undefined,
                 facilities: facilities
                     ? (Array.isArray(facilities)
                         ? facilities
@@ -156,6 +158,7 @@ exports.manageGuestHouse = async (req, res) => {
                 message: "Guesthouse submitted successfully.",
                 data: {
                     guesthouseId: gh._id,
+                    stars: gh.stars.toFixed(1),
                     images: imagesWithUrl
                 }
             });
@@ -169,6 +172,7 @@ exports.manageGuestHouse = async (req, res) => {
         });
     }
 };
+
 
 exports.getMyGuesthouse = async (req, res) => {
     try {
@@ -185,9 +189,11 @@ exports.getMyGuesthouse = async (req, res) => {
             });
         }
 
+        const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
         const data = guesthouses.map(gh => ({
             ...gh.toObject(),
+            stars: gh.stars != null ? gh.stars.toFixed(1) : "0.0", // 🔹 ensures 2 → "2.0"
             guestHouseImage: gh.guestHouseImage.map(img => `${baseUrl}/uploads/guestHouseImage/${img}`)
         }));
 

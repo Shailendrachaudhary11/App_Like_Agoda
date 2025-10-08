@@ -10,17 +10,33 @@ const guesthouseSchema = new mongoose.Schema({
     },
     contactNumber: String,
     description: String,
-    guestHouseImage: { type: [String] }, // guestHouse Image
+    guestHouseImage: { type: [String] },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
-    stars: { type: Number, min: 0, max: 5, default: 0 },
-    // bedroom: { type: Number, enum: [1, 2, 3], required: true },
+    isFavourite: {
+        type: Number,
+        enum: [0, 1],   // Only 0 or 1 allowed
+        default: 0
+    },
+    stars: {
+        type: Number,
+        min: 0,
+        max: 5,
+        default: 0,
+        set: v => parseFloat(parseFloat(v).toFixed(1)) //  always float, 1 decimal
+    },
+
     price: { type: Number, required: true },
+
+    cleaningFee: { type: Number, default: 200 },  // ₹200 per stay (average)
+    taxPercent: { type: Number, default: 12 },
+
     facilities: {
         type: [String],
         default: []
     },
-    atolls: String,
-    islands: String,
+
+    atolls: { type: String, required: true },
+    islands: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
 });
 

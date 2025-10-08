@@ -191,27 +191,18 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        console.log("Updating profile:", req.user?._id);
-
-        // Load fresh admin user
-        let adminUser = await AdminUser.findById(req.user._id);
-        if (!adminUser) {
+        const adminId = req.user?.id;
+        console.log(adminId)
+        let user = await AdminUser.findById(adminId);
+        if (!user) {
             return res.status(404).json({
                 success: false,
-                message: "Admin user not found",
+                message: "User not found",
                 data: null,
             });
         }
 
-        if (!req.body) {
-            return res.status(400).json({
-                success: false,
-                message: "Request body is required",
-                data: null,
-            });
-        }
-
-        // Update name if provided
+        // name if provided
         if (req.body.name) {
             let name = req.body.name.toString().trim();
             if (name.length < 4) {
@@ -221,17 +212,14 @@ exports.updateProfile = async (req, res) => {
                     data: null,
                 });
             }
-            adminUser.name = name.charAt(0).toUpperCase() + name.slice(1); // capitalize
+            user.name = name.charAt(0).toUpperCase() + name.slice(1);
         }
 
-        // update email if provided
-
+        //ate email if provided
         if (req.body.email) {
-            let email = req.body.email.toString().trim(); // remove extra spaces
+            let email = req.body.email.toString().trim().toLowerCase();
 
-            // Check if email format is valid
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
             if (!emailRegex.test(email)) {
                 return res.status(400).json({
                     success: false,
@@ -240,17 +228,27 @@ exports.updateProfile = async (req, res) => {
                 });
             }
 
-            // If valid, assign email to user
-            adminUser.email = email.toLowerCase(); // store in lowercase for consistency
+            //ck if email already exists for another user
+            const existingEmail = await User.findOne({
+                email,
+                _id: { $ne: req.user._id }
+            });
+            if (existingEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email already in use by another account",
+                    data: null,
+                });
+            }
+
+            user.email = email;
         }
 
-
+        //ate phone if provided
         if (req.body.phone) {
             let phone = req.body.phone.toString().trim();
 
-            // Phone number regex (10 digits only, can adjust as needed)
             const phoneRegex = /^[0-9]{10}$/;
-
             if (!phoneRegex.test(phone)) {
                 return res.status(400).json({
                     success: false,
@@ -259,37 +257,45 @@ exports.updateProfile = async (req, res) => {
                 });
             }
 
-            adminUser.phone = phone;
+            //ck if phone already exists for another user
+            const existingPhone = await User.findOne({
+                phone,
+                _id: { $ne: req.user._id }
+            });
+            if (existingPhone) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Phone number already in use by another account",
+                    data: null,
+                });
+            }
+
+            user.phone = phone;
         }
 
-
-        // Update profile image if uploaded
+        //ate profile image if uploaded
         if (req.file) {
-            adminUser.adminImage = req.file.filename; // store only filename
+            user.adminImage = req.file.filename;
         }
 
-        await adminUser.save();
+        if (req.body.address) {
+            user.address = req.body.address.trim();
+        }
+        await user.save();
 
-        console.log("Profile updated successfully:", adminUser._id);
 
-        // Construct profile image URL
-        const profileImageUrl = adminUser.adminImage
-            ? `${process.env.BASE_URL || ""}/uploads/adminImage/${adminUser.adminImage}`
+        console.log("Profile updated successfully:", user._id);
+
+        //struct profile image URL
+        const profileImageUrl = user.profileImage
+            ? `${process.env.BASE_URL || ""}/uploads/profileImage/${user.profileImage}`
             : null;
 
         return res.status(200).json({
             success: true,
-            message: "Profile updated successfully.",
-            data: {
-                id: adminUser._id,
-                name: adminUser.name,
-                email: adminUser.email,
-                phone: adminUser.phone,
-                role: adminUser.role,
-                adminImage: profileImageUrl,
-                createdAt: adminUser.createdAt,
-            },
+            message: "Profile updated successfully."
         });
+
     } catch (err) {
         console.error("[PROFILE] Error updating profile:", err);
 
@@ -1468,7 +1474,10 @@ exports.getBookingById = async (req, res) => {
                 path: "room",
                 select: "roomCategory price" // room model fields
             })
-
+            .populate({
+                path: "customer",
+                select: "name phone"
+            });
 
         if (!booking) {
             return res.status(404).json({
@@ -1478,7 +1487,7 @@ exports.getBookingById = async (req, res) => {
         }
 
         const guesthouse = booking.guesthouse || {};
-        const room = booking.room;
+        const customer = booking.customer || {};
 
         // Guest House Image
         let guestHouseImg = "";
@@ -1494,6 +1503,15 @@ exports.getBookingById = async (req, res) => {
         let roomCount = 1; // default 1 because schema is single room
         let roomType = booking.room && booking.room.roomCategory ? booking.room.roomCategory : "";
 
+        // Payment details
+        const paymentDetails = {
+            customerName: customer.name || "",
+            customerContact: customer.phone || "",
+            paymentMethod: booking.paymentMethod || "N/A",
+            paymentDate: booking.paymentDate
+                ? new Date(booking.paymentDate).toISOString().split("T")[0]
+                : null,
+        };
 
         const formattedBooking = {
             id: booking._id,
@@ -1503,6 +1521,7 @@ exports.getBookingById = async (req, res) => {
             guestHouseAddress: guesthouse.address || "",
             checkIn: booking.checkIn ? new Date(booking.checkIn).toISOString().split("T")[0] : "",
             checkOut: booking.checkOut ? new Date(booking.checkOut).toISOString().split("T")[0] : "",
+            totalNights: booking.nights,
             room: roomCount,
             roomType: roomType || "",
             guest: booking.guest || {}, // guest info
@@ -1512,6 +1531,7 @@ exports.getBookingById = async (req, res) => {
             paymentStatus: booking.paymentStatus || "",
             createdAt: booking.createdAt ? new Date(booking.createdAt).toISOString().split("T")[0] : "",
             updatedAt: booking.updatedAt ? new Date(booking.updatedAt).toISOString().split("T")[0] : "",
+            paymentDetails: paymentDetails
         };
 
         res.status(200).json({

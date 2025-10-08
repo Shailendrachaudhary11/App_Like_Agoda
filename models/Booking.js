@@ -10,11 +10,16 @@ const bookingSchema = new mongoose.Schema({
   nights: Number,
 
   // Amount details
-  amount: { type: Number, required: true },       // base price
+  amount: { type: Number, required: true },
   guest: { type: Number },
-  discount: { type: Number, default: 0 },         // discount applied
-  finalAmount: { type: Number, required: true },  // after discount
-  promoCode: { type: String, default: null },     // promo code used
+
+  cleaningFee: { type: Number, required: true },
+  taxAmount: { type: Number, required: true },
+  discount: { type: Number, default: 0 },
+
+  finalAmount: { type: Number, required: true },
+
+  promoCode: { type: String, default: null },
 
   status: {
     type: String,
@@ -22,12 +27,20 @@ const bookingSchema = new mongoose.Schema({
       'pending',      // Customer booked
       'confirmed',    // after payment done 
       'cancelled',    // Cancelled by customer or guesthouse
+      'completed',
     ],
     default: 'pending'
   },
 
   reason: { type: String },
   paymentStatus: { type: String, enum: ['unpaid', 'paid', 'refunded'], default: 'unpaid' },
+  paymentDate: { type: Date }, //new field for payment date
+
+  paymentMethod: {
+    type: String,
+    enum: ['card', 'paypal', 'upi', 'wallet'], // allowed methods
+    default: null
+  },
 
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

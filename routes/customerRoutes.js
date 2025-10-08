@@ -7,13 +7,13 @@ router.post("/customer/guesthouses", auth(["customer"]), customerController.getA
 router.post("/customer/guesthouses/:id", auth(["customer"]), customerController.getGuestHouseById);
 
 router.post("/customer/guesthouses/:guesthouseId/rooms", auth(["customer"]), customerController.getAllRoomsByGuesthouseId);
-router.post("/customer/rooms", auth(["customer"]), customerController.searchRooms); // room filter // CROSS
+// router.post("/customer/rooms", auth(["customer"]), customerController.searchRooms); // room filter // CROSS
 router.post("/customer/rooms/:id", auth(["customer"]), customerController.getRoomById)
 
 
-router.post("/customer/bookings", auth(["customer"]), customerController.createBooking);
+router.post("/customer/bookings/create", auth(["customer"]), customerController.createBooking);
 router.put("/customer/bookings/:id/pay", auth(["customer"]), customerController.payPayment)
-router.get("/customer/bookings", auth(["customer"]), customerController.allBooking);
+router.post("/customer/bookings", auth(["customer"]), customerController.allBooking);
 router.post("/customer/bookings/past", auth(["customer"]), customerController.pastBooking);
 router.post("/customer/bookings/upcoming", auth(["customer"]), customerController.upcomingBooking);
 router.post("/customer/bookings/cancel", auth(["customer"]), customerController.getCancelBookings);
@@ -22,7 +22,7 @@ router.put("/customer/bookings/:id/cancel", auth(["customer"]), customerControll
 
 
 router.post("/customer/reviews", auth(["customer"]), customerController.addReviewAndRating);
-router.get("/customer/reviews", auth(["customer"]), customerController.getAllReviews)
+// router.get("/customer/reviews", auth(["customer"]), customerController.getAllReviews)
 router.post("/customer/reviews/guesthouses/:id", auth(["customer"]), customerController.getReviewByGuestHouse);
 // router.post("/customer/reviews/room/:id", auth(["customer"]), customerController.getReviewByRoom);
 
