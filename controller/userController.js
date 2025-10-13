@@ -347,11 +347,6 @@ exports.updateProfile = async (req, res) => {
 
         console.log("Profile updated successfully:", user._id);
 
-        //struct profile image URL
-        const profileImageUrl = user.profileImage
-            ? `${process.env.BASE_URL || ""}/uploads/profileImage/${user.profileImage}`
-            : null;
-
         return res.status(200).json({
             success: true,
             message: "Profile updated successfully."

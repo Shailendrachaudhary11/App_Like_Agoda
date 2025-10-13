@@ -5,63 +5,78 @@ const { registerValidation } = require("../validators/userValidator");
 const validateRequest = require("../middlewares/validateRequest");
 const auth = require('../middlewares/authMiddleware');
 const upload = require("../middlewares/upload");
+const verifyToken = require("../middlewares/verifyTokenPassword")
 
 
-router.post("/register", upload.single('adminImage'), registerValidation, validateRequest, adminController.register);
-router.post('/login', adminController.login);
-router.post("/viewProfile", auth(["admin"]), adminController.getProfile);
-router.put("/updateProfile", auth(["admin"]), upload.single('adminImage'), adminController.updateProfile);
-router.put("/changePassword", auth(["admin"]), adminController.changePassword);
+// ===== AUTH =====
+router.post("/register", upload.single("adminImage"), registerValidation, validateRequest, adminController.register);
+router.post("/login", adminController.login);
+router.post("/profile-view", auth(["admin"]), adminController.getProfile);
+router.post("/profile-update", auth(["admin"]), upload.single("adminImage"), adminController.updateProfile);
+router.post("/change-password", auth(["admin"]), adminController.changePassword);
+router.post("/forgot-password", adminController.forgotPassword);
+router.post("/verify-otp", verifyToken, adminController.verifyOtp);
+router.post("/reset-password", verifyToken, adminController.resetPassword);
 
 
-router.post("/guesthouses", auth(["admin"]), adminController.getAllGuestHouses);
-router.post("/guesthouses/pendingRegistration", auth(["admin"]), adminController.getPendingRegistration);
-router.post("/guesthouses/:id/update", upload.array("guestHouseImage", 5), auth(["admin"]), adminController.updateGuestHouse);
-router.post("/guesthouses/owners", auth(["admin"]), adminController.getAllGuestOwner);
-router.post("/guesthouses/:id", auth(["admin"]), adminController.getGuestHousesById);
-router.post("/guesthouses/owners/:id", auth(["admin"]), adminController.getGuestOwnerById);
-
-router.put("/guesthouses/:id/approve", auth(["admin"]), adminController.approveGuesthouseRegistration);
-router.put("/guesthouses/:id/reject", auth(["admin"]), adminController.rejectGuesthouseRegistration);
-router.put("/guesthouses/:id/active", auth(["admin"]), adminController.activeInactiveGuesthouse);
+// ===== GUESTHOUSES =====
+router.post("/guesthouses/list", auth(["admin"]), adminController.getAllGuestHouses);
+router.post("/guesthouses/view", auth(["admin"]), adminController.getGuestHousesById);
+router.post("/guesthouses/:id/update", auth(["admin"]), upload.array("guestHouseImage", 5), adminController.updateGuestHouse);
+router.post("/guesthouses/approve", auth(["admin"]), adminController.approveGuesthouseRegistration);
+router.post("/guesthouses/reject", auth(["admin"]), adminController.rejectGuesthouseRegistration);
+router.post("/guesthouses/status", auth(["admin"]), adminController.activeInactiveGuesthouse);
 
 
-router.post("/rooms", auth(["admin"]), adminController.getAllRooms);
-router.post("/rooms/:id", auth(["admin"]), adminController.getRoomById);
-router.put("/rooms/:id", upload.array("photos", 10), auth(["admin"]), adminController.editRoom);
-router.delete("/rooms/:id", auth(["admin"]), adminController.deleteRoom);
+// ===== GUESTHOUSE OWNERS =====
+router.post("/guesthouse-owners/list", auth(["admin"]), adminController.getAllGuestOwner);
+router.post("/guesthouse-owners/view", auth(["admin"]), adminController.getGuestOwnerById);
 
 
-router.post("/customers", auth(["admin"]), adminController.getAllCustomer);
-router.post("/customers/:id", auth(["admin"]), adminController.getCustomerById);
-router.put("/customers/:id/active", auth(["admin"]), adminController.suspendedApproveCustomer);
-router.put("/customers/:id", upload.single('profileImage'), auth(["admin"]), adminController.updateCustomer);
-router.delete("/customers/:id", auth(["admin"]), adminController.deleteCustomer);
+// ===== ROOMS =====
+router.post("/rooms/list", auth(["admin"]), adminController.getAllRooms);
+router.post("/rooms/view", auth(["admin"]), adminController.getRoomById);
+router.post("/rooms/:id/update", auth(["admin"]), upload.array("photos", 10), adminController.editRoom);
+router.post("/rooms/delete", auth(["admin"]), adminController.deleteRoom);
 
 
-router.post("/bookings", auth(["admin"]), adminController.getAllBooking);
-router.post("/bookings/past", auth(["admin"]), adminController.pastBooking);
-router.post("/bookings/upcoming", auth(["admin"]), adminController.upcomingBookings);
-router.post("/bookings/cancel", auth(["admin"]), adminController.getCancelBookings);
-router.post("/bookings/:id", auth(["admin"]), adminController.getBookingById);
+// ===== CUSTOMERS =====
+router.post("/customers/list", auth(["admin"]), adminController.getAllCustomer);
+router.post("/customers/view", auth(["admin"]), adminController.getCustomerById);
+router.post("/customers/status", auth(["admin"]), adminController.suspendedApproveCustomer);
+router.post("/customers/:id/update", auth(["admin"]), upload.single("profileImage"), adminController.updateCustomer);
+router.post("/customers/delete", auth(["admin"]), adminController.deleteCustomer);
 
 
-router.post("/promos", auth(["admin"]), adminController.getAllPromo);
-router.post("/promos", auth(["admin"]), adminController.createPromo);
-router.post("/promos/:id", auth(["admin"]), adminController.getPromoById);
-router.put("/promos/:id", auth(["admin"]), adminController.updatePromo);
-router.delete("/promos/:id", auth(["admin"]), adminController.deletePromo);
+// ===== BOOKINGS =====
+router.post("/bookings/list", auth(["admin"]), adminController.getAllBooking);
+router.post("/bookings/list/past", auth(["admin"]), adminController.pastBooking);
+router.post("/bookings/list/upcoming", auth(["admin"]), adminController.upcomingBookings);
+router.post("/bookings/list/cancelled", auth(["admin"]), adminController.getCancelBookings);
+router.post("/bookings/view", auth(["admin"]), adminController.getBookingById);
+router.post("/bookings/list/pending", auth(["admin"]), adminController.pendingBooking);
 
 
-router.post("/notifications", auth(["admin"]), adminController.getAllNotification);
-router.put("/notifications/:notificationId/read", auth(["admin"]), adminController.readNotification);
-router.delete("/notifications/:notificationId/delete", auth(["admin"]), adminController.deleteNotification);
+// ===== PROMOS =====
+router.post("/promos/list", auth(["admin"]), adminController.getAllPromo);
+router.post("/promos/create", auth(["admin"]), adminController.createPromo);
+router.post("/promos/view", auth(["admin"]), adminController.getPromoById);
+router.post("/promos/update", auth(["admin"]), adminController.updatePromo);
+router.post("/promos/delete", auth(["admin"]), adminController.deletePromo);
 
 
-router.post("/addBedroomNames", auth(["admin"]), adminController.addBedroomNames);
-router.post("/setMaxPrice", auth(["admin"]), adminController.setMaxPrice);
+// ===== NOTIFICATIONS =====
+router.post("/notifications/list", auth(["admin"]), adminController.getAllNotification);
+router.post("/notifications/read", auth(["admin"]), adminController.readNotification);
+router.post("/notifications/delete", auth(["admin"]), adminController.deleteNotification);
+
+
+// ===== SETTINGS / CONFIG =====
+router.post("/bedroom-names/add", auth(["admin"]), adminController.addBedroomNames);
+router.post("/max-price/set", auth(["admin"]), adminController.setMaxPrice);
 router.post("/facilities/add", auth(["admin"]), adminController.createFacility);
 router.post("/atolls/add", auth(["admin"]), adminController.createAtoll);
 router.post("/islands/add", auth(["admin"]), adminController.createIslands);
+
 
 module.exports = router;

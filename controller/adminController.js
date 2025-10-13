@@ -17,7 +17,6 @@ const Review = require("../models/review")
 
 const BASE_URL = process.env.BASE_URL;
 
-// -------------------------------------------- Admin Registration ------------------------------
 exports.register = async (req, res) => {
     try {
         const data = req.body;
@@ -78,7 +77,8 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
     try {
-        let { email, password } = req.body;
+
+        let { email, password } = req.body || {};
         console.log("Admin login attempt:", email);
 
         if (!email || !password) {
@@ -169,7 +169,7 @@ exports.getProfile = async (req, res) => {
         }
 
         admin.adminImage = admin.adminImage
-            ? `${process.env.BASE_URL || ""}/uploads/adminImage/${admin.adminImage}`
+            ? `${BASE_URL}/uploads/adminImage/${admin.adminImage}`
             : null;
 
 
@@ -192,7 +192,16 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const adminId = req.user?.id;
-        console.log(adminId)
+
+        // Validate request body
+        if (!req.body) {
+            return res.status(400).json({
+                success: false,
+                message: "Request body is required",
+                data: null,
+            });
+        }
+
         let user = await AdminUser.findById(adminId);
         if (!user) {
             return res.status(404).json({
@@ -202,7 +211,7 @@ exports.updateProfile = async (req, res) => {
             });
         }
 
-        // name if provided
+        // Update name if provided
         if (req.body.name) {
             let name = req.body.name.toString().trim();
             if (name.length < 4) {
@@ -215,10 +224,9 @@ exports.updateProfile = async (req, res) => {
             user.name = name.charAt(0).toUpperCase() + name.slice(1);
         }
 
-        //ate email if provided
+        // Update email if provided
         if (req.body.email) {
             let email = req.body.email.toString().trim().toLowerCase();
-
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
                 return res.status(400).json({
@@ -228,15 +236,16 @@ exports.updateProfile = async (req, res) => {
                 });
             }
 
-            //ck if email already exists for another user
-            const existingEmail = await User.findOne({
+            // Check uniqueness in AdminUser collection
+            const existingEmail = await AdminUser.findOne({
                 email,
-                _id: { $ne: req.user._id }
+                _id: { $ne: adminId }
             });
+
             if (existingEmail) {
                 return res.status(400).json({
                     success: false,
-                    message: "Email already in use by another account",
+                    message: "Email already in use by another admin",
                     data: null,
                 });
             }
@@ -244,10 +253,9 @@ exports.updateProfile = async (req, res) => {
             user.email = email;
         }
 
-        //ate phone if provided
+        // Update phone if provided
         if (req.body.phone) {
             let phone = req.body.phone.toString().trim();
-
             const phoneRegex = /^[0-9]{10}$/;
             if (!phoneRegex.test(phone)) {
                 return res.status(400).json({
@@ -257,15 +265,16 @@ exports.updateProfile = async (req, res) => {
                 });
             }
 
-            //ck if phone already exists for another user
-            const existingPhone = await User.findOne({
+            // Check uniqueness in AdminUser collection
+            const existingPhone = await AdminUser.findOne({
                 phone,
-                _id: { $ne: req.user._id }
+                _id: { $ne: adminId }
             });
+
             if (existingPhone) {
                 return res.status(400).json({
                     success: false,
-                    message: "Phone number already in use by another account",
+                    message: "Phone number already in use by another admin",
                     data: null,
                 });
             }
@@ -273,32 +282,33 @@ exports.updateProfile = async (req, res) => {
             user.phone = phone;
         }
 
-        //ate profile image if uploaded
+        // Update profile image if uploaded
         if (req.file) {
             user.adminImage = req.file.filename;
         }
 
+
+        // Update address if provided
         if (req.body.address) {
             user.address = req.body.address.trim();
         }
+
         await user.save();
 
+        console.log("Admin profile updated successfully:", user._id);
 
-        console.log("Profile updated successfully:", user._id);
-
-        //struct profile image URL
-        const profileImageUrl = user.profileImage
-            ? `${process.env.BASE_URL || ""}/uploads/profileImage/${user.profileImage}`
-            : null;
-
+        // Return success
         return res.status(200).json({
             success: true,
-            message: "Profile updated successfully."
+            message: "Profile updated successfully.",
+            data: {
+                userId: user._id,
+                profileImage: user.adminImage ? `${process.env.BASE_URL || ""}/uploads/adminImage/${user.adminImage}` : null
+            }
         });
 
     } catch (err) {
         console.error("[PROFILE] Error updating profile:", err);
-
         return res.status(500).json({
             success: false,
             message: "Failed to update profile.",
@@ -389,7 +399,110 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-// -------------------------------------------- GUEST HOUSE ---------------------------------------
+exports.forgotPassword = async (req, res) => {
+    try {
+        let { email } = req.body;
+        if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+
+        email = email.toLowerCase().trim();
+        const user = await AdminUser.findOne({ email });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        //erate OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.otp = otp; //e OTP in DB
+        await user.save();
+
+        //erate JWT token for OTP verification
+        const token = jwt.sign(
+            { email: user.email, id: user._id, name: user.name },
+            process.env.JWT_SECRET,
+            { expiresIn: "20m" }
+        );
+
+        //d OTP via email
+        const emailSent = await sendEmail(user.email, "Password Reset OTP", `Your OTP is ${otp}. It will expire in 10 minutes.`);
+        if (!emailSent) return res.status(500).json({ success: false, message: "Failed to send OTP email." });
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP sent to your email.",
+            token //ent must send this in Authorization header
+        });
+
+    } catch (err) {
+        console.error("[FORGOT PASSWORD] Error:", err);
+        return res.status(500).json({ success: false, message: "Internal server error.", error: err.message });
+    }
+};
+
+exports.verifyOtp = async (req, res) => {
+    try {
+        const { otp } = req.body;
+        const decoded = req.user;
+
+        if (!otp) return res.status(400).json({ success: false, message: "OTP is required" });
+        if (!decoded || !decoded.email) return res.status(400).json({ success: false, message: "Invalid token" });
+
+        const user = await AdminUser.findOne({ email: decoded.email, _id: decoded.id });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+
+        if (user.otp !== otp.toString()) return res.status(400).json({ success: false, message: "Invalid OTP" });
+
+        // correct → generate reset token
+        const resetToken = jwt.sign(
+            { email: user.email, id: user._id, action: "resetPassword" },
+            process.env.JWT_SECRET,
+            { expiresIn: "20m" }
+        );
+
+        //ar OTP after use
+        user.otp = undefined;
+        user.otpExpiry = undefined;
+        await user.save();
+
+        return res.status(200).json({ success: true, message: "OTP verified", resetToken });
+
+    } catch (err) {
+        console.error("[VERIFY OTP] Error:", err);
+        return res.status(500).json({ success: false, message: "Internal server error.", error: err.message });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const { newPassword, confirmPassword } = req.body;
+        const decoded = req.user; //m verifyToken middleware
+
+        const user = await AdminUser.findOne({ email: decoded.email, _id: decoded.id });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        if (!newPassword || !confirmPassword)
+            return res.status(400).json({ success: false, message: "New password and confirm password are required" });
+
+        if (newPassword !== confirmPassword)
+            return res.status(400).json({ success: false, message: "Passwords do not match" });
+
+        if (newPassword.length < 6)
+            return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+
+        if (decoded.action !== "resetPassword")
+            return res.status(400).json({ success: false, message: "Invalid reset token" });
+
+        //ate password
+        user.password = await bcrypt.hash(newPassword, 10);
+        user.otp = null; //ar OTP after success
+        await user.save();
+
+        return res.status(200).json({ success: true, message: "Password reset successfully" });
+
+    } catch (err) {
+        console.error("[RESET PASSWORD] Error:", err);
+        return res.status(500).json({ success: false, message: "Internal server error.", error: err.message });
+    }
+};
+
 exports.getAllGuestOwner = async (req, res) => {
     try {
         const guestOwners = await User.find({ role: "guesthouse" }, { password: 0, createdAt: 0, __v: 0, otp: 0 });
@@ -450,7 +563,7 @@ exports.getPendingRegistration = async (req, res) => {
 
 exports.getGuestOwnerById = async (req, res) => {
     try {
-        const guestHouseOwnerId = req.params.id;
+        const guestHouseOwnerId = req.body.id;
 
         // Validate ID format
         if (!guestHouseOwnerId) {
@@ -649,8 +762,7 @@ exports.updateGuestHouse = async (req, res) => {
 
 exports.getGuestHousesById = async (req, res) => {
     try {
-        const { id } = req.params;
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5050}`;
+        const { id } = req.body;
 
         // Find guesthouse by Id
         const guestHouse = await Guesthouse.findById(id, { location: 0, createdAt: 0, __v: 0, contactNumber: 0, owner: 0 });
@@ -721,87 +833,18 @@ exports.getGuestHousesById = async (req, res) => {
     }
 };
 
-// exports.suspendedGuestHouse = async (req, res) => {
-//     try {
-//         const { id: guesthouseId } = req.params;
-//         if (!guesthouseId) {
-//             return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
-//         }
-
-//         console.log(`[GUESTHOUSE] Suspending guesthouse: ${guesthouseId}`);
-
-//         // Populate owner to access email or _id
-//         const guesthouse = await Guesthouse.findById(guesthouseId).populate("owner", "name email _id");
-//         if (!guesthouse) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "Guesthouse not found."
-//             });
-//         }
-
-//         // Check if already suspended
-//         if (guesthouse.status === "suspended") {
-//             return res.status(200).json({
-//                 success: true,
-//                 message: "Guesthouse is already suspended.",
-//                 data: {
-//                     id: guesthouse._id,
-//                     name: guesthouse.name,
-//                     ownerName: guesthouse.owner?.name,
-//                     ownerEmail: guesthouse.owner?.email,
-//                     status: guesthouse.status
-//                 }
-//             });
-//         }
-
-//         // Update status
-//         guesthouse.status = "suspended";
-//         await guesthouse.save();
-
-//         // Send notification if owner exists
-//         if (guesthouse.owner?._id) {
-//             await createNotification(
-//                 guesthouse.owner._id,
-//                 "general",
-//                 `Your guesthouse "${guesthouse.name}" has been suspended by admin.`,
-//                 { guesthouseId: guesthouse._id }
-//             );
-//             console.log(`[GUESTHOUSE] Notification sent to owner: ${guesthouse.owner._id}`);
-//         }
-
-//         return res.status(200).json({
-//             success: true,
-//             message: "Guesthouse suspended successfully.",
-//             data: {
-//                 id: guesthouse._id,
-//                 name: guesthouse.name,
-//                 ownerName: guesthouse.owner?.name,
-//                 ownerEmail: guesthouse.owner?.email,
-//                 status: guesthouse.status
-//             }
-//         });
-
-//     } catch (err) {
-//         console.error("[GUESTHOUSE] Error suspending guesthouse:", err);
-//         return res.status(500).json({
-//             success: false,
-//             message: "Failed to suspend guesthouse.",
-//             error: err.message
-//         });
-//     }
-// };
 
 exports.activeInactiveGuesthouse = async (req, res) => {
     try {
-        const { id: guesthouseId } = req.params;
-        if (!guesthouseId) {
+        const { id } = req.body;
+        if (!id) {
             return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
         }
 
-        console.log(`[GUESTHOUSE] Activating and Inactivating guesthouse: ${guesthouseId}`);
+        console.log(`[GUESTHOUSE] Activating and Inactivating guesthouse: ${id}`);
 
         // Populate owner to safely access _id and email
-        const guesthouse = await Guesthouse.findById(guesthouseId).populate("owner", "name email _id");
+        const guesthouse = await Guesthouse.findById(id).populate("owner", "name email _id");
         if (!guesthouse) {
             return res.status(404).json({
                 success: false,
@@ -859,15 +902,16 @@ exports.activeInactiveGuesthouse = async (req, res) => {
 
 exports.approveGuesthouseRegistration = async (req, res) => {
     try {
-        const { id: guesthouseId } = req.params;
-        if (!guesthouseId) {
+        const { id } = req.body; // taking id from request body
+
+        if (!id) {
             return res.status(400).json({ success: false, message: "Guesthouse ID is required." });
         }
 
-        console.log(`[GUESTHOUSE] Approving registration: ${guesthouseId}`);
+        console.log(`[GUESTHOUSE] Approving registration: ${id}`);
 
         // Find guesthouse user by ID and role
-        const guesthouseUser = await User.findOne({ _id: guesthouseId, role: "guesthouse" });
+        const guesthouseUser = await User.findOne({ _id: id, role: "guesthouse" });
         if (!guesthouseUser) {
             return res.status(404).json({
                 success: false,
@@ -888,42 +932,42 @@ exports.approveGuesthouseRegistration = async (req, res) => {
             });
         }
 
-        // Update status
+        // Update status (First letter capital)
         guesthouseUser.status = "approved";
         await guesthouseUser.save();
 
-        console.log(`[GUESTHOUSE] Registration approved: ${guesthouseId}`);
+        console.log(`[GUESTHOUSE] Registration approved: ${id}`);
 
-        // email send for approval regiatration via email
-
+        // Send approval email
         const emailSent = await sendEmail(
             guesthouseUser.email,
-            ` Congratulations! Your Guesthouse Registration is Approved `,
-
+            `Congratulations! Your Guesthouse Registration is Approved`,
             `Dear ${guesthouseUser.name},
 
-                    We are pleased to inform you that your guesthouse registration has been successfully approved.  
-                    You can now log in to your account and proceed with the next steps to manage your guesthouse.
-                        
-                    Here are your registered details:
-                    - Owner Name: ${guesthouseUser.name}
-                    - Email: ${guesthouseUser.email}
-                    - Phone: ${guesthouseUser.phone}
-                        
-                      Next Steps:
-                    1. Login to your account using your registered email.
-                    2. Complete your guesthouse profile (add images, amenities, pricing, etc.).
-                    3. Start managing your rooms, availability, and bookings.
-                        
-                    If you face any issues, feel free to reach out to our support team.
-                        
-                        
-                    Best Regards,  
-                    Team Guesthouse Management`
+We are pleased to inform you that your guesthouse registration has been successfully approved.  
+You can now log in to your account and proceed with the next steps to manage your guesthouse.
+
+Here are your registered details:
+- Owner Name: ${guesthouseUser.name}
+- Email: ${guesthouseUser.email}
+- Phone: ${guesthouseUser.phone}
+
+Next Steps:
+1. Login to your account using your registered email.
+2. Complete your guesthouse profile (add images, amenities, pricing, etc.).
+3. Start managing your rooms, availability, and bookings.
+
+If you face any issues, feel free to reach out to our support team.
+
+Best Regards,  
+Team Guesthouse Management`
         );
 
-
-        if (!emailSent) return res.status(500).json({ success: false, message: "registrtaion notification not send." });
+        if (!emailSent)
+            return res.status(500).json({
+                success: false,
+                message: "Registration notification email not sent.",
+            });
 
         return res.status(200).json({
             success: true,
@@ -936,7 +980,6 @@ exports.approveGuesthouseRegistration = async (req, res) => {
                 approvedAt: new Date()
             }
         });
-
     } catch (err) {
         console.error("[GUESTHOUSE] Error approving registration:", err);
         return res.status(500).json({
@@ -947,9 +990,10 @@ exports.approveGuesthouseRegistration = async (req, res) => {
     }
 };
 
+
 exports.rejectGuesthouseRegistration = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id } = req.body;
         console.log("Rejecting guesthouse registration:", id);
 
         const guesthouseUser = await User.findOne({ _id: id, role: "guesthouse" });
@@ -1020,7 +1064,6 @@ exports.rejectGuesthouseRegistration = async (req, res) => {
     }
 };
 
-// -------------------------------------------- ROOM MANAGEMENT ---------------------------------------
 exports.getAllRooms = async (req, res) => {
     try {
         const rooms = await Room.find();
@@ -1062,10 +1105,10 @@ exports.getAllRooms = async (req, res) => {
 
 exports.getRoomById = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id } = req.body;
 
         // Fetch room with guesthouse populated
-        const room = await Room.findById(id).populate("guesthouse");
+        const room = await Room.findById(id);
 
         if (!room) {
             return res.status(404).json({
@@ -1138,8 +1181,7 @@ exports.editRoom = async (req, res) => {
         if (pricePerNight) room.pricePerNight = pricePerNight;
         if (priceWeekly) room.priceWeekly = priceWeekly;
         if (priceMonthly) room.priceMonthly = priceMonthly;
-
-
+        if (description) room.description = description;
 
         // Handle new images (replace old completely if new uploaded)
         if (req.files && req.files.length > 0) {
@@ -1165,7 +1207,7 @@ exports.editRoom = async (req, res) => {
 
 exports.deleteRoom = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id } = req.body;
 
         // Use findById if roomid is MongoDB _id
         const room = await Room.findById(id);
@@ -1193,10 +1235,9 @@ exports.deleteRoom = async (req, res) => {
     }
 };
 
-// -------------------------------------------- CUSTOMER MANAGEMENT ---------------------------------------
 exports.getAllCustomer = async (req, res) => {
     try {
-        const customers = await User.find({ role: "customer" }, { createdAt: 0, __v: 0, otp: 0, role: 0 })
+        const customers = await User.find({ role: "customer" }, { createdAt: 0, __v: 0, otp: 0, role: 0 }).select("-password")
 
         const updatedCustomers = customers.map(customer => {
             const customerObj = customer.toObject();
@@ -1224,7 +1265,7 @@ exports.getAllCustomer = async (req, res) => {
 
 exports.getCustomerById = async (req, res) => {
     try {
-        const customerId = req.params.id; // get Id from url
+        const customerId = req.body.id; // get Id from url
 
         if (!customerId) {
             return res.status(400).json({
@@ -1265,7 +1306,7 @@ exports.getCustomerById = async (req, res) => {
 
 exports.suspendedApproveCustomer = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id } = req.body;
 
         const user = await User.findById(id);
         if (!user) {
@@ -1365,7 +1406,7 @@ exports.updateCustomer = async (req, res) => {
 
 exports.deleteCustomer = async (req, res) => {
     try {
-        const customerId = req.params.id;
+        const customerId = req.body.id;
 
         const customer = await User.findById(customerId);
         if (!customer) {
@@ -1392,7 +1433,8 @@ exports.deleteCustomer = async (req, res) => {
     }
 };
 
-// -------------------------------------------- BOOKING ---------------------------------------
+//___________________________________________________BOOKING ____________________________________
+
 exports.getAllBooking = async (req, res) => {
     try {
 
@@ -1440,7 +1482,8 @@ exports.getAllBooking = async (req, res) => {
                 guest: booking.guest,
                 amount: booking.amount,
                 finalAmount: booking.finalAmount,
-                status: booking.status,
+                status: booking.status.charAt(0).toUpperCase() +
+                    booking.status.slice(1),
                 paymentStatus: booking.paymentStatus,
             };
         });
@@ -1463,7 +1506,7 @@ exports.getAllBooking = async (req, res) => {
 
 exports.getBookingById = async (req, res) => {
     try {
-        const { id } = req.params; // booking id from URL
+        const { id } = req.body; // booking id from URL
 
         const booking = await Booking.findById(id)
             .populate({
@@ -1734,7 +1777,92 @@ exports.getCancelBookings = async (req, res) => {
     }
 };
 
-// -------------------------------------------- PROMOS ---------------------------------------
+exports.pendingBooking = async (req, res) => {
+    try {
+        const pendingBookings = await Booking.find({
+            status: "pending"
+        })
+            .sort({ checkOut: -1 }) // latest past bookings first
+            .populate({
+                path: "guesthouse",
+                select: "name address guestHouseImage",
+            })
+            .select("-__v -createdAt -updatedAt");
+
+        if (!pendingBookings || pendingBookings.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "No pending bookings found.",
+                count: 0,
+                data: [],
+                serverTime: new Date().toISOString()
+            });
+        }
+
+        const formattedBookings = pendingBookings.map((booking) => {
+            const guesthouse = booking.guesthouse || {};
+            let guestHouseImg = "";
+
+            if (guesthouse.guestHouseImage) {
+                if (Array.isArray(guesthouse.guestHouseImage)) {
+                    guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0].trim()}`;
+                } else if (typeof guesthouse.guestHouseImage === "string") {
+                    guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage.split(",")[0].trim()}`;
+                }
+            }
+
+            // Room count logic
+            let roomCount = 0;
+            if (Array.isArray(booking.room)) {
+                roomCount = booking.room.length;
+            } else if (typeof booking.room === "number") {
+                roomCount = booking.room;
+            } else if (booking.room) {
+                roomCount = 1;
+            }
+
+            return {
+                id: booking._id,
+                guesthouse: guesthouse._id || null,
+                guestHouseImg: guestHouseImg,
+                guestHouseName: guesthouse.name || "",
+                guestHouseAddress: guesthouse.address || "",
+                checkIn: booking.checkIn
+                    ? new Date(booking.checkIn).toISOString().split("T")[0]
+                    : "",
+                checkOut: booking.checkOut
+                    ? new Date(booking.checkOut).toISOString().split("T")[0]
+                    : "",
+                room: roomCount,
+                guest: booking.guest,
+                amount: booking.amount,
+                finalAmount: booking.finalAmount,
+                status: booking.status.charAt(0).toUpperCase() +
+                    booking.status.slice(1), // <-- Capitalized here
+                paymentStatus: booking.paymentStatus,
+            };
+        });
+
+
+        res.status(200).json({
+            success: true,
+            message: "pending bookings fetched successfully.",
+            count: formattedBookings.length,
+            data: formattedBookings
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "error fetching pending bookings.",
+            error: error
+        })
+    }
+}
+
+//___________________________________________________PROMO ____________________________________
+
+
 exports.getAllPromo = async (req, res) => {
     try {
         const promos = await Promo.find();
@@ -1816,7 +1944,7 @@ exports.createPromo = async (req, res) => {
 
 exports.getPromoById = async (req, res) => {
     try {
-        const promo = await Promo.findById(req.params.id);
+        const promo = await Promo.findById(req.body.id);
         if (!promo) return res.status(404).json({
             success: false,
             message: "Promo not found"
@@ -1833,7 +1961,7 @@ exports.getPromoById = async (req, res) => {
 
 exports.updatePromo = async (req, res) => {
     try {
-        const promoId = req.params.id;
+        const promoId = req.body.id;
         let promo = await Promo.findById(promoId);
 
         if (!promo) {
@@ -1892,7 +2020,7 @@ exports.updatePromo = async (req, res) => {
 
 exports.deletePromo = async (req, res) => {
     try {
-        const promo = await Promo.findByIdAndDelete(req.params.id);
+        const promo = await Promo.findByIdAndDelete(req.body.id);
         if (!promo) return res.status(404).json({ success: false, message: "Promo not found" });
         res.status(200).json({ success: true, message: "Promo deleted successfully" });
     } catch (err) {
@@ -1900,7 +2028,6 @@ exports.deletePromo = async (req, res) => {
     }
 };
 
-// -------------------------------------------- NOTIFICATION ---------------------------------------
 exports.getAllNotification = async (req, res) => {
     try {
         const adminId = req.user.id;
@@ -1942,7 +2069,7 @@ exports.getAllNotification = async (req, res) => {
 
 exports.readNotification = async (req, res) => {
     try {
-        const { notificationId } = req.params;
+        const { notificationId } = req.body;
         const adminId = req.user.id;
 
         //  Await जरूरी है
@@ -1980,7 +2107,7 @@ exports.readNotification = async (req, res) => {
 
 exports.deleteNotification = async (req, res) => {
     try {
-        const { notificationId } = req.params;
+        const { notificationId } = req.body;
         const adminId = req.user.id;
 
         //  Await जरूरी है
@@ -2015,7 +2142,6 @@ exports.deleteNotification = async (req, res) => {
 };
 
 
-// ------------ 
 exports.createAtoll = async (req, res) => {
     try {
         const { name } = req.body;
@@ -2026,7 +2152,6 @@ exports.createAtoll = async (req, res) => {
             });
         }
 
-        // Check if an atoll with same name exists already (optional)
         const existing = await Atolls.findOne({ name });
         if (existing) {
             return res.status(400).json({

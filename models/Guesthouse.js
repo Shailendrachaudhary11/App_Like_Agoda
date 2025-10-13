@@ -27,16 +27,22 @@ const guesthouseSchema = new mongoose.Schema({
 
     price: { type: Number, required: true },
 
-    cleaningFee: { type: Number, default: 200 },  // ₹200 per stay (average)
-    taxPercent: { type: Number, default: 12 },
-
-    facilities: {
-        type: [String],
-        default: []
+    cleaningFee: {
+        type: Number,
+        default: 200,
+        set: v => typeof v === 'string' ? parseFloat(v) : v
+    },
+    taxPercent: {
+        type: Number,
+        default: 12,
+        set: v => typeof v === 'string' ? parseFloat(v) : v
     },
 
-    atolls: { type: String, required: true },
-    islands: { type: String, required: true },
+
+    atolls: { type: mongoose.Schema.Types.ObjectId, ref: 'Atoll' },
+    islands: { type: mongoose.Schema.Types.ObjectId, ref: 'Island' },
+    facilities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Facility' }],
+
     createdAt: { type: Date, default: Date.now },
 });
 
@@ -44,6 +50,3 @@ guesthouseSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('Guesthouse', guesthouseSchema);
 
-
-// mobappssolutions124@gmail.com
-// 124Mobapps
