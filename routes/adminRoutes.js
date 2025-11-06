@@ -66,9 +66,9 @@ router.post("/bookings/list/pending", auth(["admin"]), adminController.pendingBo
 
 // ===== PROMOS =====
 router.post("/promos/list", auth(["admin"]), adminController.getAllPromo);
-router.post("/promos/create", auth(["admin"]), adminController.createPromo);
+router.post("/promos/create", auth(["admin"]), upload.single("promoImage"), adminController.createPromo);
 router.post("/promos/view", auth(["admin"]), adminController.getPromoById);
-router.post("/promos/update", auth(["admin"]), adminController.updatePromo);
+router.post("/promos/update", upload.single("promoImage"), auth(["admin"]), adminController.updatePromo);
 router.post("/promos/delete", auth(["admin"]), adminController.deletePromo);
 router.post("/promos/status", auth(["admin"]), adminController.activeInActivePromo);
 
@@ -77,19 +77,19 @@ router.post("/promos/status", auth(["admin"]), adminController.activeInActivePro
 router.post("/notifications/list", auth(["admin"]), adminController.getAllNotification);
 router.post("/notifications/read", auth(["admin"]), adminController.readNotification);
 router.post("/notifications/delete", auth(["admin"]), adminController.deleteNotification);
-
+router.post("/notifications/delete-all", auth(["admin"]), adminController.deleteAllNotification);
 
 // ===== SETTINGS / CONFIG =====
 
 router.post("/atolls", auth(["admin"]), adminController.getAllAtolls);
 router.post("/atolls/add", auth(["admin"]), upload.single("atollImage"), adminController.createAtoll);
-router.post("/atolls/update", auth(["admin"]), upload.single("atollImage"),  adminController.editAtoll);
-router.post("/atolls/status", auth(["admin"]),  adminController.activeInActiveAtoll);
+router.post("/atolls/update", auth(["admin"]), upload.single("atollImage"), adminController.editAtoll);
+router.post("/atolls/status", auth(["admin"]), adminController.activeInActiveAtoll);
 router.post("/atolls/delete", auth(["admin"]), adminController.deleteAtoll);
 
 router.post("/atolls/islands", auth(["admin"]), adminController.getAllIslands);
 router.post("/atolls/islands/add", auth(["admin"]), adminController.createIslands);
-router.post("/atolls/islands/status", auth(["admin"]),  adminController.activeInActiveIsland);
+router.post("/atolls/islands/status", auth(["admin"]), adminController.activeInActiveIsland);
 router.post("/atolls/islands/update", auth(["admin"]), adminController.editIsland);
 router.post("/atolls/islands/delete", auth(["admin"]), adminController.deleteIsland);
 

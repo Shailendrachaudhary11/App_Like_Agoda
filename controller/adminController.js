@@ -11,11 +11,10 @@ const createNotification = require("../utils/notificationHelper");
 const sendEmail = require("../utils/sendEmail");
 const Facility = require("../models/Facility");
 const Island = require("../models/Island");
-const BedType = require("../models/BedType");
+// const BedType = require("../models/BedType");
 const Review = require("../models/review");
 const Payment = require("../models/Payment");
 const Atoll = require("../models/Atoll");
-
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -1376,6 +1375,14 @@ exports.getRoomById = async (req, res) => {
                 path: "guesthouse",
                 select: "name address contactNumber description"
             })
+            .populate({
+                path: "roomCategory",
+                select: "name"
+            })
+            .populate({
+                path: "bedType",
+                select: "name"
+            })
             .select("roomCategory bedType capacity photos amenities pricePerNight priceWeekly priceMonthly description active")
 
         if (!room) {
@@ -1388,6 +1395,8 @@ exports.getRoomById = async (req, res) => {
         //  Convert to plain object
         const roomObj = room.toObject();
 
+        roomObj.roomCategory = roomObj.roomCategory.name;
+        roomObj.bedType = roomObj.bedType.name;
         roomObj.status = roomObj.active;
         delete roomObj.active;
 
@@ -1830,7 +1839,11 @@ exports.getBookingById = async (req, res) => {
             })
             .populate({
                 path: "room",
-                select: "roomCategory price"
+                select: "roomCategory name",
+                populate: {
+                    path: "roomCategory",
+                    select: "name"
+                }
             })
             .populate({
                 path: "customer",
@@ -1860,11 +1873,18 @@ exports.getBookingById = async (req, res) => {
             }
         }
 
-        // Room count and type
-        let roomCount = booking.room?.length || 0; // default 1 because schema is single room
+        let roomCount = 0;
         let roomType = [];
-        if (booking.room && Array.isArray(booking.room) && booking.room.length > 0) {
-            roomType = booking.room.map(r => r.roomCategory || "");
+
+        if (booking.room) {
+            if (Array.isArray(booking.room)) {
+                roomCount = booking.room.length;
+                roomType = booking.room.map(r => r?.roomCategory?.name || "");
+            }
+            else {
+                roomCount = 1;
+                roomType = [booking.room?.roomCategory?.name || ""];
+            }
         }
 
         const paymentDetails = payment
@@ -2248,12 +2268,23 @@ exports.getAllPromo = async (req, res) => {
     try {
         const promos = await Promo.find().sort({ createdAt: -1 });
 
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const promosWithUrls = promos.map(promo => ({
+            ...promo.toObject(),
+            promoImage: promo.promoImage
+                ? `${BASE_URL}/uploads/promoImage/${promo.promoImage}`
+                : null
+        }));
+
         res.status(200).json({
             success: true,
-            count: promos.length,
-            message: "Successfully fetching all promo codes",
-            data: promos
+            count: promosWithUrls.length,
+            message: "Successfully fetched all promo codes",
+            data: promosWithUrls
         });
+
     } catch (err) {
         res.status(500).json({
             success: false,
@@ -2263,95 +2294,145 @@ exports.getAllPromo = async (req, res) => {
     }
 };
 
+
 exports.createPromo = async (req, res) => {
     try {
         const { code, discountType, discountValue, startDate, endDate } = req.body;
 
-        // Required fields check
         if (!code || !discountType || !discountValue || !startDate || !endDate) {
             return res.status(400).json({
                 success: false,
-                message: "Missing required fields: code, discountType, discountValue, startDate, endDate"
+                message: "All fields (code, discountType, discountValue, startDate, endDate) are required",
             });
         }
 
-        // Extra validations
-        if (!["flat", "percentage"].includes(discountType)) {
+        if (!req.file) {
             return res.status(400).json({
                 success: false,
-                message: "discountType must be either 'flat' or 'percentage'"
+                message: "Promo-Image is requied",
             });
         }
 
-        if (discountValue <= 0) {
+        if (!["flat", "percentage"].includes(discountType.toLowerCase())) {
             return res.status(400).json({
                 success: false,
-                message: "discountValue must be greater than 0"
+                message: "discountType must be either 'flat' or 'percentage'",
             });
         }
 
-        if (new Date(endDate) <= new Date(startDate)) {
+        if (isNaN(discountValue) || discountValue <= 0) {
             return res.status(400).json({
                 success: false,
-                message: "endDate must be greater than startDate"
+                message: "discountValue must be a positive number",
             });
         }
 
-        // Create promo object
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (end <= start) {
+            return res.status(400).json({
+                success: false,
+                message: "endDate must be later than startDate",
+            });
+        }
+
+        const existingPromo = await Promo.findOne({ code });
+        if (existingPromo) {
+            return res.status(400).json({
+                success: false,
+                message: "Promo code already exists. Use a different code.",
+            });
+        }
+
         const promo = new Promo({
-            code,
+            code: code.trim().toUpperCase(),
             discountType,
             discountValue,
-            startDate,
-            endDate
+            startDate: start,
+            endDate: end,
+            promoImage: req.file ? req.file.filename : null,
         });
 
         await promo.save();
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             message: "Promo created successfully",
+            data: promo,
+        });
+    } catch (err) {
+        console.error("[Promo] createPromo error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while creating promo",
+            error: err.message,
+        });
+    }
+};
+
+
+exports.getPromoById = async (req, res) => {
+    try {
+        const { id } = req.body;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Promo ID is required"
+            });
+        }
+
+        const promo = await Promo.findById(id);
+
+        if (!promo) {
+            return res.status(404).json({
+                success: false,
+                message: "Promo not found"
+            });
+        }
+
+        if (promo.promoImage) {
+            promo.promoImage = `${BASE_URL}/uploads/promoImage/${promo.promoImage}`;
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Successfully fetched promo code.",
             data: promo
         });
 
     } catch (err) {
+        console.error("Error fetching promo by ID:", err);
         res.status(500).json({
             success: false,
-            message: "Error creating promo",
+            message: "Error fetching promo",
             error: err.message
         });
     }
 };
 
-exports.getPromoById = async (req, res) => {
-    try {
-        const promo = await Promo.findById(req.body.id);
-        if (!promo) return res.status(404).json({
-            success: false,
-            message: "Promo not found"
-        });
-        res.status(200).json({
-            success: true,
-            message: `Successfully fetch promo code.`,
-            data: promo
-        });
-    } catch (err) {
-        res.status(500).json({ success: false, message: "Error fetching promo", error: err.message });
-    }
-};
 
 exports.updatePromo = async (req, res) => {
     try {
-        const promoId = req.body.id;
-        let promo = await Promo.findById(promoId);
+        const { id, code, discountType, discountValue, startDate, endDate } = req.body;
 
-        if (!promo) {
-            return res.status(404).json({ success: false, message: "Promo not found" });
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Promo ID is required"
+            });
         }
 
-        const { code, discountType, discountValue, startDate, endDate } = req.body;
+        let promo = await Promo.findById(id);
+        if (!promo) {
+            return res.status(404).json({
+                success: false,
+                message: "Promo not found"
+            });
+        }
 
-        // 🔹 discountType validation
+        //  Validate discountType
         if (discountType && !["flat", "percentage"].includes(discountType)) {
             return res.status(400).json({
                 success: false,
@@ -2359,46 +2440,62 @@ exports.updatePromo = async (req, res) => {
             });
         }
 
-        // 🔹 discountValue validation
-        if (discountValue && discountValue <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "discountValue must be greater than 0"
-            });
-        }
-
-        // 🔹 date validation
-        if (startDate && endDate && new Date(endDate) <= new Date(startDate)) {
-            return res.status(400).json({
-                success: false,
-                message: "endDate must be greater than startDate"
-            });
-        }
-
-        // 🔹 Allowed fields only
-        const allowedUpdates = { code, discountType, discountValue, startDate, endDate };
-        Object.keys(allowedUpdates).forEach((key) => {
-            if (allowedUpdates[key] !== undefined) {
-                promo[key] = allowedUpdates[key];
+        //  Validate discountValue (ensure it's a number)
+        if (discountValue !== undefined) {
+            const value = Number(discountValue);
+            if (isNaN(value) || value <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "discountValue must be a number greater than 0"
+                });
             }
-        });
+            promo.discountValue = value;
+        }
+
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (end <= start) {
+            return res.status(400).json({
+                success: false,
+                message: "endDate must be later than startDate",
+            });
+        }
+
+        if (startDate) {
+            promo.startDate = startDate;
+        }
+
+        if (endDate) {
+            promo.endDate = endDate;
+        }
+
+        //  Update other fields if provided
+        if (code) promo.code = code;
+        if (discountType) promo.discountType = discountType;
+
+        //  Update image if uploaded
+        if (req.file) {
+            promo.promoImage = req.file.filename;
+        }
 
         await promo.save();
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Promo updated successfully",
             data: promo
         });
 
     } catch (err) {
-        res.status(500).json({
+        console.error("[PROMO UPDATE] Error:", err.message);
+        return res.status(500).json({
             success: false,
             message: "Error updating promo",
             error: err.message
         });
     }
 };
+
 
 exports.deletePromo = async (req, res) => {
     try {
@@ -2430,6 +2527,17 @@ exports.activeInActivePromo = async (req, res) => {
             });
         }
 
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        //  Check if trying to activate an expired promo
+        if (promo.endDate < today && promo.status === "inactive") {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot activate this promo — its end date has already passed."
+            });
+        }
+
         if (promo.status === "active") {
             promo.status = "inactive"
         }
@@ -2440,11 +2548,7 @@ exports.activeInActivePromo = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: `Promo has been ${promo.status} successfully.`,
-            data: {
-                promoId: promo._id,
-                isActive: promo.status
-            }
+            message: `Promo has been ${promo.status} successfully.`
         });
 
     } catch (error) {
@@ -2573,6 +2677,39 @@ exports.deleteNotification = async (req, res) => {
         });
     }
 };
+
+exports.deleteAllNotification = async (req, res) => {
+    try {
+        const adminId = req.user.id;
+
+        // Find all notifications for this admin
+        const notifications = await Notification.find({ "receiver.userId": adminId });
+
+        if (!notifications || notifications.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No notifications found."
+            });
+        }
+
+        // Delete all notifications for that admin
+        await Notification.deleteMany({ "receiver.userId": adminId });
+
+        return res.status(200).json({
+            success: true,
+            message: "All notifications deleted successfully."
+        });
+
+    } catch (error) {
+        console.error("[NOTIFICATION DELETE] Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Server error while deleting notifications.",
+            error: error.message
+        });
+    }
+};
+
 
 //__________________________________ Add values
 
@@ -2792,15 +2929,15 @@ exports.editAtoll = async (req, res) => {
 
 exports.getAllIslands = async (req, res) => {
     try {
-        const { id } = req.body || {};
+        const { atollId } = req.body || {};
 
-        if (!id) {
+        if (!atollId) {
             return res.status(400).json({
                 success: false,
                 message: "atollId is required"
             });
         }
-        const atoll = await Atoll.find({ _id: id, status: "active" });
+        const atoll = await Atoll.find({ _id: atollId, status: "active" });
         if (!atoll.length) {
             return res.status(404).json({
                 success: false,
@@ -2808,7 +2945,7 @@ exports.getAllIslands = async (req, res) => {
             });
         }
 
-        const islands = await Island.find({ atoll: id }).select("-__v -createdAt -updatedAt"); // extra fields hata sakte ho
+        const islands = await Island.find({ atoll: atollId }).select("-__v -createdAt -updatedAt"); // extra fields hata sakte ho
 
         // Convert _id -> id
         const formattedIslands = islands.map(island => {

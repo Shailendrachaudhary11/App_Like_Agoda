@@ -610,9 +610,10 @@ exports.getRoomById = async (req, res) => {
         const roomObj = room.toObject();
 
         //  Single image instead of array
-        const roomUrl = roomObj.photos?.length
-            ? `${BASE_URL}/uploads/rooms/${roomObj.photos[0]}`
-            : null;
+        const roomUrl = roomObj.photos.map(photo => {
+            return `${BASE_URL}/uploads/rooms/${photo}`;
+        })
+
 
         //  Format availability (remove time)
         const formattedAvailability = (roomObj.availability || [])

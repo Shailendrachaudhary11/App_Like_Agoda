@@ -654,6 +654,7 @@ exports.createBooking = async (req, res) => {
         const taxPercent = guesthouse.taxPercent || 0;
         const taxAmount = (baseAmount * taxPercent) / 100;
 
+
         const booking = new Booking({
             customer: customerId,
             guesthouse: guesthouseId,
@@ -671,23 +672,6 @@ exports.createBooking = async (req, res) => {
             reason: paymentMethod ? "Payment completed" : "Awaiting payment"
         });
 
-        await booking.save();
-
-        //  Update each room’s availability array
-        for (const room of rooms) {
-            const updatedAvailability = room.availability.map(a => {
-                const dateStr = new Date(a.date).toISOString().split("T")[0];
-                if (requestedDates.includes(dateStr)) {
-                    a.isAvailable = false;
-                }
-                return a;
-            });
-
-            room.availability = updatedAvailability;
-            await room.save({ validateBeforeSave: false });
-        }
-
-        //  Payment logic (optional)
         if (paymentMethod) {
             const validPaymentMethods = ["Card", "Paypal", "UPI", "Wallet"];
             if (!validPaymentMethods.includes(paymentMethod)) {
@@ -704,6 +688,23 @@ exports.createBooking = async (req, res) => {
                 paymentStatus: "paid",
             });
             await payment.save();
+        }
+
+
+        await booking.save();
+
+        //  Update each room’s availability array
+        for (const room of rooms) {
+            const updatedAvailability = room.availability.map(a => {
+                const dateStr = new Date(a.date).toISOString().split("T")[0];
+                if (requestedDates.includes(dateStr)) {
+                    a.isAvailable = false;
+                }
+                return a;
+            });
+
+            room.availability = updatedAvailability;
+            await room.save({ validateBeforeSave: false });
         }
 
         // send notification to guesthouse
@@ -751,8 +752,9 @@ exports.bookingSummary = async (req, res) => {
         }
 
         const rooms = await Room.find({ _id: { $in: roomId }, guesthouse: guesthouseId });
-        if (rooms.length !== roomId.length) {
-            return res.status(404).json({ success: false, message: "One or more rooms not found for this guesthouse." });
+
+        if (rooms.length === 0) {
+            return res.status(404).json({ success: false, message: "these rooms not found for this guesthouse." });
         }
 
         const checkInDate = new Date(checkIn);
@@ -792,7 +794,7 @@ exports.bookingSummary = async (req, res) => {
         let discountAmount = 0;
 
         if (promoCode) {
-            const promo = await Promo.findOne({ code: promoCode, isActive: true });
+            const promo = await Promo.findOne({ code: promoCode, status: "active" });
 
             if (!promo) {
                 return res.status(404).json({
@@ -1848,13 +1850,11 @@ exports.getAllPromos = async (req, res) => {
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0); // remove time portion
-        const startOfToday = new Date(today.setHours(0, 0, 0, 0));
-        const endOfToday = new Date(today.setHours(23, 59, 59, 999));
 
         const promos = await Promo.find({
             status: "active",
-            startDate: { $lte: startOfToday }, // promo already started
-            endDate: { $gte: endOfToday },   // promo not yet ended
+            startDate: { $lte: today }, // promo already started
+            endDate: { $gte: today },   // promo not yet ended
         })
             .sort({ createdAt: -1 })
             .select("-createdAt -updatedAt -__v");
@@ -1950,7 +1950,6 @@ exports.getPromoById = async (req, res) => {
 //__________________ Notification _________________________
 
 exports.getAllNotification = async (req, res) => {
-    v
     try {
         const customerId = req.user.id;
 
