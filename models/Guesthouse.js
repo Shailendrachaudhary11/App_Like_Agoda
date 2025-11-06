@@ -17,13 +17,6 @@ const guesthouseSchema = new mongoose.Schema({
         enum: [0, 1],   // Only 0 or 1 allowed
         default: 0
     },
-    stars: {
-        type: Number,
-        min: 0,
-        max: 5,
-        default: 0,
-        set: v => parseFloat(parseFloat(v).toFixed(1)) //  always float, 1 decimal
-    },
 
     price: { type: Number, required: true },
 

@@ -9,22 +9,112 @@ const createNotification = require("../utils/notificationHelper");
 const Atolls = require("../models/Atoll");
 const Facility = require("../models/Facility");
 const Island = require("../models/Island");
-const Bedroom = require("../models/Bedroom");
+const BedType = require("../models/BedType")
+const RoomCategory = require("../models/RoomCategory");
 const logger = require('../utils/logger');
-const Payment = require("../models/Payment")
+const Payment = require("../models/Payment");
+const PDFDocument = require("pdfkit");
+const path = require("path");
+const fs = require("fs");
+const User = require("../models/user");
+const { isExpired } = require('../utils/cardUtils');
+const Card = require('../models/Card');
+const Wallet = require("../models/Wallet");
+const getRemainingTime = require("../utils/remainingTime");
+const Atoll = require("../models/Atoll");
 
 const BASE_URL = process.env.BASE_URL;
 
+exports.getAllGuesthouseWithAllAtolls = async (req, res) => {
+    try {
+        const atolls = await Atoll.find({ status: "active" }).lean();
+
+        const results = await Promise.all(
+            atolls.map(async (atoll) => {
+                const guesthouseCount = await Guesthouse.countDocuments({ atolls: atoll._id });
+                const image = `${BASE_URL}/uploads/atolls/${atoll.atollImage}`
+
+                return {
+                    atollId: atoll._id,
+                    name: atoll.name,
+                    atollImage: image,
+                    noOfGuesthouse: guesthouseCount
+                };
+            })
+        )
+        res.status(200).json({
+            success: true,
+            message: "Atolls with guesthouse count fetched successfully",
+            data: results,
+        });
+
+    } catch (error) {
+        console.error("Error fetching atoll data:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching atoll guesthouse data",
+            error: error.message,
+        });
+    }
+}
+
+exports.getPromoImage = async (req, res) => {
+    try {
+        const today = new Date();
+        const startOfToday = new Date(today.setHours(0, 0, 0, 0));
+        const endOfToday = new Date(today.setHours(23, 59, 59, 999));
+
+        // Active promos fetch karo
+        const promos = await Promo.find({
+            status: "active",
+            startDate: { $lte: endOfToday },
+            endDate: { $gte: startOfToday },
+        })
+            .sort({ createdAt: -1 })
+            .select("promoImage");
+
+        if (!promos.length) {
+            return res.status(404).json({
+                success: false,
+                message: "No active promo available today",
+            });
+        }
+
+        // Full URL ke sath array create karo
+        const promoImagesUrl = promos.map(promo => `${BASE_URL}/uploads/promoImage/${promo.promoImage}`);
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetch all offers images",
+            promoImages: promoImagesUrl, // full URLs
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            success: false,
+            message: "Something went wrong while fetching offers images",
+            error: err.message,
+        });
+    }
+};
+
+
 exports.getAllGuestHouses = async (req, res) => {
     try {
-        // Extract & parse body params safely
-        let { lng, lat, distance, sort, atolls, islands, facilities } = req.body;
+        if (!req.body || typeof req.body !== 'object') {
+            return res.status(400).json({
+                success: false,
+                message: "Request body is required"
+            });
+        }
+
+        let { lng, lat, distance, sort, price, atolls, islands, facilities, bedTypes } = req.body;
 
         lng = lng ? parseFloat(lng) : null;
         lat = lat ? parseFloat(lat) : null;
-        distance = distance ? parseInt(distance) : 3000; // default 3 km in meters
+        distance = distance ? parseInt(distance) : 3000;
 
-        // Validate coordinates if provided
         if ((lng && !lat) || (!lng && lat)) {
             return res.status(400).json({
                 success: false,
@@ -32,18 +122,13 @@ exports.getAllGuestHouses = async (req, res) => {
             });
         }
 
-        // Build dynamic filter
         let filter = { status: "active" };
-        if (facilities && Array.isArray(facilities) && facilities.length > 0) {
+        if (price) filter.price = { $lte: parseFloat(price) };
+        if (facilities && Array.isArray(facilities) && facilities.length > 0)
             filter.facilities = { $in: facilities };
-        }
-        if (atolls && typeof atolls === "string") {
-            filter.atolls = atolls;
-        }
-        if (islands && Array.isArray(islands) && islands.length > 0) {
+        if (atolls && typeof atolls === "string") filter.atolls = atolls;
+        if (islands && Array.isArray(islands) && islands.length > 0)
             filter.islands = { $in: islands };
-        }
-
         if (lat && lng) {
             filter.location = {
                 $near: {
@@ -53,29 +138,31 @@ exports.getAllGuestHouses = async (req, res) => {
             };
         }
 
-        // Handle sorting
         let sortOption = {};
         switch (sort) {
-            case "lowest":
-                sortOption = { price: 1 };
-                break;
-            case "highest":
-                sortOption = { price: -1 };
-                break;
-            case "stars":
-                sortOption = { stars: -1 };
-                break;
-            default:
-                sortOption = {};
+            case "lowest": sortOption = { price: 1 }; break;
+            case "highest": sortOption = { price: -1 }; break;
+            case "stars": sortOption = { stars: -1 }; break;
         }
 
-        // Fetch guesthouses
+        // BedType filter logic
+        let guesthouseIds = [];
+        if (bedTypes && Array.isArray(bedTypes) && bedTypes.length > 0) {
+            const rooms = await Room.find({ bedType: { $in: bedTypes } }).select("guesthouse");
+            guesthouseIds = rooms.map(r => r.guesthouse.toString());
+
+            if (guesthouseIds.length > 0) {
+                filter._id = { $in: guesthouseIds };
+            }
+        }
+
         const guestHouses = await Guesthouse.find(filter)
             .populate("atolls", "name")
             .populate("islands", "name")
             .sort(sortOption)
+            .sort({ createdAt: -1 })
             .select("-location -owner -contactNumber -description -facilities -__v -createdAt")
-            .lean(); // lean() for better performance
+            .lean();
 
         if (!guestHouses.length) {
             return res.status(200).json({
@@ -90,32 +177,47 @@ exports.getAllGuestHouses = async (req, res) => {
         const favorites = await Favorites.find({ customer: customerId }).select("guesthouse");
         const favoriteIds = favorites.map(f => f.guesthouse.toString());
 
-        // Add full image URLs & reviews count
         const guestHousesWithUrls = await Promise.all(
             guestHouses.map(async gh => {
                 gh.id = gh._id;
                 delete gh._id;
 
-                if (gh.atolls && typeof gh.atolls === "object") {
-                    gh.atolls = gh.atolls.name;
-                }
-                if (gh.islands && typeof gh.islands === "object") {
-                    gh.islands = gh.islands.name;
-                }
+                if (gh.atolls && typeof gh.atolls === "object") gh.atolls = gh.atolls.name;
+                if (gh.islands && typeof gh.islands === "object") gh.islands = gh.islands.name;
 
                 if (gh.guestHouseImage && Array.isArray(gh.guestHouseImage)) {
                     gh.guestHouseImage = gh.guestHouseImage.map(
                         img => `${BASE_URL}/uploads/guestHouseImage/${img}`
                     );
                 }
-                gh.stars = gh.stars != null ? parseFloat(gh.stars).toFixed(1) : "0.0";
+
                 gh.cleaningFee = gh.cleaningFee ? parseFloat(gh.cleaningFee) : 0;
                 gh.taxPercent = gh.taxPercent ? parseFloat(gh.taxPercent) : 0;
 
                 try {
-                    const reviews = await Review.countDocuments({ guesthouse: gh.id });
-                    gh.reviews = reviews;
-                } catch {
+                    // 👇 Ye aggregation reviews ka count aur average dono nikalta hai
+                    const reviewStats = await Review.aggregate([
+                        { $match: { guesthouse: gh.id } },
+                        {
+                            $group: {
+                                _id: "$guesthouse",
+                                averageRating: { $avg: "$rating" },
+                                totalReviews: { $sum: 1 }
+                            }
+                        }
+                    ]);
+
+                    if (reviewStats.length > 0) {
+                        gh.stars = reviewStats[0].averageRating
+                            ? reviewStats[0].averageRating.toFixed(1).toString()
+                            : "0.0";
+                        gh.reviews = reviewStats[0].totalReviews;
+                    } else {
+                        gh.stars = "0.0";
+                        gh.reviews = 0;
+                    }
+                } catch (error) {
+                    gh.stars = 0.0;
                     gh.reviews = 0;
                 }
 
@@ -126,6 +228,10 @@ exports.getAllGuestHouses = async (req, res) => {
         );
 
         logger.info("Fetched %d guesthouses successfully.", guestHousesWithUrls.length);
+
+        if (sort === "stars") {
+            guestHousesWithUrls.sort((a, b) => parseFloat(b.stars) - parseFloat(a.stars));
+        }
 
         return res.status(200).json({
             success: true,
@@ -149,6 +255,14 @@ exports.getAllGuestHouses = async (req, res) => {
 exports.getGuestHouseById = async (req, res) => {
     try {
         const { guesthouseId } = req.body;
+
+        if (!guesthouseId) {
+            return res.status(404).json({
+                success: false,
+                statusCode: 404,
+                message: "Guesthouse Id found."
+            });
+        }
 
         // Find guesthouse by Id
         const guestHouseObj = await Guesthouse.findById(guesthouseId)
@@ -216,6 +330,12 @@ exports.getGuestHouseById = async (req, res) => {
             reviewsText = getRatingComment(reviewScore);
         }
 
+        reviewScore = parseFloat(reviewScore.toFixed(1));
+
+        guestHouseObj.stars = reviewScore ? reviewScore.toFixed(1).toString() : "0.0";
+        guestHouseObj.cleaningFee = guestHouseObj.cleaningFee ? parseFloat(guestHouseObj.cleaningFee) : 0;
+        guestHouseObj.taxPercent = guestHouseObj.taxPercent ? parseFloat(guestHouseObj.taxPercent) : 0;
+
         guestHouseObj.rating = Number(rating);
         guestHouseObj.reviewsCount = reviewsCount;
         guestHouseObj.reviewScore = reviewScore;
@@ -242,43 +362,96 @@ exports.getGuestHouseById = async (req, res) => {
     }
 };
 
+//_______________________ rooms by guesthouse______________--
+
 exports.getAllRoomsByGuesthouseId = async (req, res) => {
     try {
-        const { guesthouseId } = req.body || {};
+        const { guesthouseId, checkIn, checkOut } = req.body;
 
-        // Build base query
-        const query = {
-            guesthouse: guesthouseId,
-            active: "active"
-        };
+        if (!guesthouseId || !checkIn || !checkOut) {
+            return res.status(400).json({
+                success: false,
+                message: "guesthouseId, checkIn and checkOut are required."
+            });
+        }
 
-        const rooms = await Room.find(query).lean();
+        const checkInDate = new Date(checkIn);
+        const checkOutDate = new Date(checkOut);
 
-        if (!rooms || rooms.length === 0) {
+        if (isNaN(checkInDate) || isNaN(checkOutDate)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid date format."
+            });
+        }
+
+        if (checkOutDate <= checkInDate) {
+            return res.status(400).json({
+                success: false,
+                message: "checkOut must be after checkIn."
+            });
+        }
+
+        // Populate category, bed type, and facilities
+        const rooms = await Room.find({ guesthouse: guesthouseId, active: "active" })
+            .populate("roomCategory", "name description") // includes description from DB
+            .populate("bedType", "name")
+            .populate("facilities", "name")
+            .lean();
+
+        if (!rooms.length) {
             return res.status(404).json({
-                success: true,
+                success: false,
                 message: "No rooms found for this guesthouse."
             });
         }
 
-        // Category descriptions
-        const categoryDescriptions = {
-            "Standard": "Budget-friendly rooms with essential comfort.",
-            "Deluxe": "Comfortable rooms with modern design and facilities.",
-            "Suite": "Spacious rooms with premium amenities and sea view.",
-            "Family": "Ideal for families, spacious and cozy.",
-            "Dormitory": "Shared rooms with basic amenities."
+        // Generate date range between check-in and check-out
+        const getDatesBetween = (start, end) => {
+            const dates = [];
+            const current = new Date(start);
+            while (current <= end) {
+                dates.push(new Date(current).toISOString().split("T")[0]);
+                current.setDate(current.getDate() + 1);
+            }
+            return dates;
         };
 
-        // Group rooms by category
+        const requiredDates = getDatesBetween(checkInDate, checkOutDate);
+
+        // Filter rooms that are available for all required dates
+        const availableRooms = rooms.filter(room => {
+            if (!Array.isArray(room.availability)) return false;
+
+            const availabilityMap = {};
+            room.availability.forEach(slot => {
+                const dateKey = new Date(slot.date).toISOString().split("T")[0];
+                availabilityMap[dateKey] = slot.isAvailable;
+            });
+
+            return requiredDates.every(date => availabilityMap[date] === true);
+        });
+
+        if (!availableRooms.length) {
+            return res.status(200).json({
+                success: true,
+                message: "No rooms available for selected dates.",
+                data: []
+            });
+        }
+
+        // 🧠 Group rooms by category (with DB description)
         const groupedRooms = {};
-        rooms.forEach(room => {
-            const category = room.roomCategory || "Uncategorized";
+
+        availableRooms.forEach(room => {
+            const category = room.roomCategory?.name || "Uncategorized";
+            const categoryDescription = room.roomCategory?.description || "No description available.";
+
             if (!groupedRooms[category]) {
                 groupedRooms[category] = {
-                    category_id: Object.keys(groupedRooms).length + 1,
-                    category_name: category + " Rooms",
-                    category_description: categoryDescriptions[category] || "",
+                    category_id: room.roomCategory?._id || null,
+                    category_name: `${category} Rooms`,
+                    category_description: categoryDescription,
                     rooms: []
                 };
             }
@@ -287,24 +460,24 @@ exports.getAllRoomsByGuesthouseId = async (req, res) => {
                 room_id: room._id,
                 room_description: room.description || category,
                 price_per_night: room.pricePerNight,
-                bed: room.bedType,
+                bed: room.bedType?.name || null,
+                facilities: room.facilities.map(f => f.name),
                 images: (room.photos || []).map(img => `${BASE_URL}/uploads/rooms/${img.trim()}`)
             });
         });
 
-        const data = Object.values(groupedRooms);
-
         return res.status(200).json({
             success: true,
-            message: "Room list fetched successfully",
-            data
+            message: "Available rooms fetched successfully",
+            NoOfRooms: availableRooms.length,
+            data: Object.values(groupedRooms)
         });
 
     } catch (error) {
         console.error("Error in getAllRoomsByGuesthouseId:", error);
         return res.status(500).json({
             success: false,
-            message: "Error fetching rooms by guesthouseId.",
+            message: "Error fetching available rooms.",
             error: error.message
         });
     }
@@ -315,34 +488,69 @@ exports.getRoomById = async (req, res) => {
     try {
         const { roomId } = req.body;
 
-        // find room using roomId
-        const room = await Room.findById(roomId).populate("guesthouse", "name address");
+        if (!roomId) {
+            return res.status(400).json({
+                success: false,
+                message: "roomId is required."
+            });
+        }
+
+        // Fetch room with populated references
+        const room = await Room.findById(roomId)
+            .populate("guesthouse", "name address")
+            .populate("roomCategory", "name")
+            .populate("bedType", "name")
+            .populate("facilities", "name");
 
         if (!room) {
-            logger.warn(`[Room] Room not found: ${roomId}`);
             return res.status(404).json({
                 success: false,
                 message: "Room not found."
             });
         }
 
-        // Fix photos URLs
-        if (room.photos && room.photos.length > 0) {
-            room.photos = room.photos.map(img => `${BASE_URL}/uploads/rooms/${img}`);
-        } else {
-            room.photos = [];
-        }
+        // Fix photo URLs
+        const photos = (room.photos || []).map(img => `${BASE_URL}/uploads/rooms/${img}`);
 
-        logger.info(`[Room] Successfully fetched room: ${roomId}`);
+        const formattedAvailability = (room.availability || [])
+            .map(item => ({
+                _id: item._id,
+                date: new Date(item.date).toISOString().split("T")[0], // only date
+                isAvailable: item.isAvailable
+            }))
+            .sort((a, b) => new Date(a.date) - new Date(b.date)); // ✅ optional sorting by date
+
+        // Extract populated field values
+        const roomCategoryName = room.roomCategory?.name || null;
+        const bedTypeName = room.bedType?.name || null;
+        const facilityNames = Array.isArray(room.facilities)
+            ? room.facilities.map(f => f.name)
+            : [];
+
+        // Construct final response
+        const responseData = {
+            _id: room._id,
+            guesthouse: room.guesthouse,
+            roomCategory: roomCategoryName,
+            bedType: bedTypeName,
+            facilities: facilityNames,
+            description: room.description,
+            pricePerNight: room.pricePerNight,
+            pricePerWeek: room.priceWeekly,
+            pricePerMonth: room.priceMonthly,
+            roomAvailable: formattedAvailability,
+            photos,
+            active: room.active,
+        };
 
         res.status(200).json({
             success: true,
             message: "Successfully fetched room.",
-            data: room
+            data: responseData
         });
 
     } catch (error) {
-        logger.error(`[Room] Error fetching room ${roomId}: ${error.message}`, { stack: error.stack });
+        console.error(`[Room] Error fetching room ${req.body.roomId}:`, error);
         res.status(500).json({
             success: false,
             message: "Error fetching room.",
@@ -353,17 +561,198 @@ exports.getRoomById = async (req, res) => {
 
 //_______________________________________ BOOKING _______________________________________
 
+
+
 exports.createBooking = async (req, res) => {
     try {
-        const { guesthouseId, roomId, checkIn, checkOut, promoCode, guest } = req.body;
+        const {
+            guesthouseId,
+            roomId,
+            checkIn,
+            checkOut,
+            guest,
+            discount,
+            totalPrice,
+            paymentMethod
+        } = req.body;
+
         const customerId = req.user.id;
 
-        if (!guesthouseId || !roomId || !checkIn || !checkOut || !guest || !Array.isArray(roomId)) {
-            logger.warn(`[Booking] Missing or invalid fields by customer ${customerId}`);
+        //  Validation
+        if (
+            !guesthouseId ||
+            !roomId ||
+            !Array.isArray(roomId) ||
+            !checkIn ||
+            !checkOut ||
+            !guest ||
+            !paymentMethod
+        ) {
             return res.status(400).json({
                 success: false,
-                message: "Missing or invalid fields: guesthouseId, roomId (array), checkIn, checkOut, guest"
+                message:
+                    "Missing or invalid fields: guesthouseId, roomId (array), checkIn, checkOut, guest, paymentMethod",
             });
+        }
+
+        const checkInDate = new Date(checkIn);
+        const checkOutDate = new Date(checkOut);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (checkInDate < today)
+            return res.status(400).json({ success: false, message: "Check-in date cannot be in the past." });
+
+        if (checkOutDate <= checkInDate)
+            return res.status(400).json({ success: false, message: "Check-out date must be after check-in date." });
+
+        //  Fetch guesthouse and rooms
+        const guesthouse = await Guesthouse.findById(guesthouseId);
+        if (!guesthouse)
+            return res.status(404).json({ success: false, message: "Guesthouse not found." });
+
+        const rooms = await Room.find({ _id: { $in: roomId }, guesthouse: guesthouseId });
+        if (rooms.length !== roomId.length)
+            return res.status(404).json({ success: false, message: "One or more rooms not found for this guesthouse." });
+
+        // Generate all dates between checkIn and checkOut (exclusive of checkout)
+        const getDatesBetween = (start, end) => {
+            const dates = [];
+            const current = new Date(start);
+            while (current <= end) { // exclude checkOut day
+                const isoDate = new Date(current).toISOString().split("T")[0];
+                dates.push(isoDate);
+                current.setDate(current.getDate() + 1);
+            }
+            return dates;
+        };
+
+        const requestedDates = getDatesBetween(checkInDate, checkOutDate);
+
+        //  Check each room’s availability
+        for (const room of rooms) {
+            const unavailable = requestedDates.filter(dateStr => {
+                const match = room.availability.find(a =>
+                    new Date(a.date).toISOString().split("T")[0] === dateStr && a.isAvailable === false
+                );
+                return !!match;
+            });
+
+            if (unavailable.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Room ${room._id} is not available for the selected dates.`,
+                    unavailableDates: unavailable,
+                });
+            }
+        }
+
+        //  Create booking document
+        const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+        const baseAmount = rooms.reduce((sum, room) => sum + (room.pricePerNight * nights), 0);
+        const cleaningFee = guesthouse.cleaningFee || 0;
+        const taxPercent = guesthouse.taxPercent || 0;
+        const taxAmount = (baseAmount * taxPercent) / 100;
+
+        const booking = new Booking({
+            customer: customerId,
+            guesthouse: guesthouseId,
+            room: roomId,
+            guest,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            nights,
+            amount: Math.round(baseAmount),
+            cleaningFee: Math.round(cleaningFee),
+            taxAmount: Math.round(taxAmount),
+            discount: Math.round(discount),
+            finalAmount: Math.round(totalPrice),
+            status: paymentMethod ? "confirmed" : "pending",
+            reason: paymentMethod ? "Payment completed" : "Awaiting payment"
+        });
+
+        await booking.save();
+
+        //  Update each room’s availability array
+        for (const room of rooms) {
+            const updatedAvailability = room.availability.map(a => {
+                const dateStr = new Date(a.date).toISOString().split("T")[0];
+                if (requestedDates.includes(dateStr)) {
+                    a.isAvailable = false;
+                }
+                return a;
+            });
+
+            room.availability = updatedAvailability;
+            await room.save({ validateBeforeSave: false });
+        }
+
+        //  Payment logic (optional)
+        if (paymentMethod) {
+            const validPaymentMethods = ["Card", "Paypal", "UPI", "Wallet"];
+            if (!validPaymentMethods.includes(paymentMethod)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid payment method. Allowed: ${validPaymentMethods.join(", ")}`,
+                });
+            }
+
+            const payment = new Payment({
+                booking: booking._id,
+                amount: totalPrice,
+                paymentMethod,
+                paymentStatus: "paid",
+            });
+            await payment.save();
+        }
+
+        // send notification to guesthouse
+        await createNotification(
+            { userId: customerId, role: "customer" },
+            { userId: guesthouse._id, role: "guesthouse" },
+            "New Booking Received",
+            `A new booking has been made for "${guesthouse.name}" from ${checkInDate.toDateString()} to ${checkOutDate.toDateString()}.`,
+            "booking",
+        );
+        console.log(`[NOTIFICATION] Sent: New booking for "${guesthouse.name}" added notification to owner ${guesthouse.owner}.`);
+
+        // send confirmation to customer
+        await createNotification(
+            { userId: guesthouse.id, role: "guesthouse" },   // Sender = guesthouse
+            { userId: customerId, role: "customer" },           // Receiver = customer
+            "Booking Confirmed",
+            `Your booking is confirmed at "${guesthouse.name}" from ${checkInDate.toDateString()} to ${checkOutDate.toDateString()}.`,
+            "booking"
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: "Booking created successfully, room availability updated.",
+            data: booking,
+        });
+    } catch (error) {
+        console.error("Error creating booking:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while creating booking",
+            error: error.message,
+        });
+    }
+};
+
+
+exports.bookingSummary = async (req, res) => {
+    try {
+        const { guesthouseId, checkIn, checkOut, guest, roomId, promoCode } = req.body;
+        const guesthouse = await Guesthouse.findById(guesthouseId).select("name address guestHouseImage taxPercent cleaningFee");
+
+        if (!guesthouse) {
+            return res.status(404).json({ success: false, message: "Guesthouse not found." });
+        }
+
+        const rooms = await Room.find({ _id: { $in: roomId }, guesthouse: guesthouseId });
+        if (rooms.length !== roomId.length) {
+            return res.status(404).json({ success: false, message: "One or more rooms not found for this guesthouse." });
         }
 
         const checkInDate = new Date(checkIn);
@@ -379,21 +768,10 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Check-out date must be later than check-in date" });
         }
 
-        const guesthouse = await Guesthouse.findById(guesthouseId);
-        if (!guesthouse) {
-            return res.status(404).json({ success: false, message: "Guesthouse not found." });
-        }
-
-        const rooms = await Room.find({ _id: { $in: roomId }, guesthouse: guesthouseId });
-        if (rooms.length !== roomId.length) {
-            return res.status(404).json({ success: false, message: "One or more rooms not found for this guesthouse." });
-        }
-
-        // Check availability for each room
         for (const room of rooms) {
             const overlap = await Booking.findOne({
                 room: room._id,
-                status: { $in: ["pending", "confirmed"] },
+                status: { $in: ["confirmed"] },
                 $or: [
                     { checkIn: { $lte: checkOutDate }, checkOut: { $gte: checkInDate } }
                 ]
@@ -408,154 +786,72 @@ exports.createBooking = async (req, res) => {
 
         const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
         const baseAmount = rooms.reduce((sum, room) => sum + (room.pricePerNight * nights), 0);
-
         const cleaningFee = guesthouse.cleaningFee || 0;
         const taxPercent = guesthouse.taxPercent || 0;
 
         let discountAmount = 0;
+
         if (promoCode) {
-            const promo = await Promo.findOne({ code: promoCode });
-            if (promo) {
-                const promoStart = new Date(promo.startDate);
-                const promoEnd = new Date(promo.endDate);
-                if (checkInDate >= promoStart && checkOutDate <= promoEnd) {
-                    if (promo.discountType === "flat") {
-                        discountAmount = promo.discountValue;
-                    } else if (promo.discountType === "percentage") {
-                        discountAmount = (baseAmount * promo.discountValue) / 100;
-                    }
-                }
+            const promo = await Promo.findOne({ code: promoCode, isActive: true });
+
+            if (!promo) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Promo code is invalid or inactive."
+                });
+            }
+
+            const promoStart = new Date(promo.startDate);
+            const promoEnd = new Date(promo.endDate);
+
+            if (checkInDate < promoStart || checkOutDate > promoEnd) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Promo code is not valid for selected dates."
+                });
+            }
+
+            // Discount calculation
+            if (promo.discountType === "flat") {
+                discountAmount = promo.discountValue;
+            } else if (promo.discountType === "percentage") {
+                discountAmount = (baseAmount * promo.discountValue) / 100;
             }
         }
 
+
         const discountedAmount = Math.max(0, baseAmount - discountAmount);
-        const taxAmount = (discountedAmount * taxPercent) / 100;
+        const taxAmount = (baseAmount * taxPercent) / 100;
         const finalAmount = Math.round(discountedAmount + taxAmount + cleaningFee);
 
-        const booking = new Booking({
-            customer: customerId,
-            guesthouse: guesthouseId,
-            room: roomId,
-            guest,
-            checkIn: checkInDate,
-            checkOut: checkOutDate,
-            nights,
-            amount: baseAmount,
-            cleaningFee,
-            taxAmount,
-            discount: discountAmount,
-            finalAmount,
-            promoCode: promoCode || null
-        });
-
-        await booking.save();
-
-        // Update availability for each room
-        for (const room of rooms) {
-            room.availability.push({
-                startDate: checkInDate,
-                endDate: checkOutDate,
-                isAvailable: false
-            });
-            await room.save();
-        }
-
-        await createNotification(
-            { userId: guesthouseId, role: "guesthouse" },
-            { userId: customerId, role: "customer" },
-            "Booking Created",
-            `Your booking at ${guesthouse.name} from ${checkIn} to ${checkOut} is created successfully. Please complete your payment ₹${booking.finalAmount} to confirm your booking.`,
-            "payment",
-            { bookingId: booking._id, guesthouseId, roomId }
-        );
-
-        await createNotification(
-            { userId: customerId, role: "customer" },
-            { userId: guesthouseId, role: "guesthouse" },
-            "Booking Created",
-            `Booking created for ${guesthouse.name} from ${checkIn} to ${checkOut}. Payment pending.`,
-            "booking",
-            { bookingId: booking._id, guesthouseId, roomId, customerId }
-        );
-
-        logger.info(`[Booking] Booking created: ${booking._id} by customer ${customerId}`);
-
-        return res.status(201).json({
-            success: true,
-            message: "Booking created successfully. Please complete your payment to confirm booking.",
-            data: booking
-        });
-
-    } catch (error) {
-        logger.error(`[Booking] Error creating booking by customer ${req.user.id}: ${error.message}`, { stack: error.stack });
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while creating booking",
-            error: error.message
-        });
-    }
-};
-
-
-exports.proceedPayment = async (req, res) => {
-    try {
-        const { bookingId } = req.body;
-
-        if (!bookingId) {
-            return res.status(400).json({
-                success: false,
-                message: "Booking ID is required.",
-            });
-        }
-
-        const booking = await Booking.findById(bookingId)
-            .populate("guesthouse", "name")
-            .populate("room", "roomName");
-
-        if (!booking) {
-            return res.status(404).json({
-                success: false,
-                message: "Booking not found.",
-            });
-        }
-
-        // Format date as “10 September 2025”
-        const formatDate = (date) => {
-            return new Date(date).toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-            });
-        };
-
-        // Build response same as shown in UI
-        const bookingDetails = {
-            noOfRooms: booking.room ? booking.room.length : 1,
-            totalNight: booking.nights.toString().padStart(2, "0"),
-            checkIn: formatDate(booking.checkIn),
-            checkOut: formatDate(booking.checkOut),
-            noOfPerson: booking.guest.toString().padStart(2, "0"),
-            price: booking.amount,
-            cleaningFee: booking.cleaningFee,
-            taxes: booking.taxAmount,
-            discount: booking.discount ? booking.discount : 0,
-            total: booking.finalAmount,
+        const response = {
+            guesthouseName: guesthouse.name,
+            guesthouseAddress: guesthouse.address,
+            guesthouseImage: guesthouse.guestHouseImage && guesthouse.guestHouseImage.length
+                ? `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0]}`
+                : null,
+            checkIn: checkInDate.toISOString().split("T")[0],
+            checkOut: checkOutDate.toISOString().split("T")[0],
+            numberOfRooms: rooms.length,
+            totalNights: nights,
+            numberOfPersons: guest,
+            basePrice: Math.round(baseAmount),
+            discount: Math.round(discountAmount),
+            cleaningFee: Math.round(cleaningFee),
+            taxes: Math.round(taxAmount),
+            totalAmount: Math.round(finalAmount)
         };
 
         return res.status(200).json({
             success: true,
-            message: "Booking details fetched successfully.",
-            data: bookingDetails,
+            message: "Booking summary calculated successfully",
+            data: response
         });
+
     } catch (error) {
-        console.error(" Error in proceedPayment:", error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error while fetching booking details.",
-            error: error.message,
-        });
+
     }
-};
+}
 
 exports.getAllPaymentTypes = async (req, res) => {
     try {
@@ -597,88 +893,6 @@ exports.getAllPaymentTypes = async (req, res) => {
     }
 };
 
-exports.payPayment = async (req, res) => {
-    try {
-        const { bookingId, paymentMethod } = req.body;
-
-        const customerId = req.user.id;
-
-        if (!bookingId) {
-            logger.warn(`[PAYMENT] Missing bookingId for customer: ${customerId}`);
-            return res.status(400).json({
-                success: false,
-                message: "Missing bookingId"
-            });
-        }
-
-        // Fetch booking by ID
-        const booking = await Booking.findOne({ _id: bookingId, customer: customerId });
-        if (!booking) {
-            return res.status(404).json({
-                success: false,
-                message: `Booking with ID ${bookingId} not found.`
-            });
-        }
-
-        // Only allow payment if status is pending
-        if (booking.status !== "pending") {
-            logger.info(`[PAYMENT] Payment attempt on non-pending booking. BookingID: ${bookingId}, Status: ${booking.status}`);
-            return res.status(400).json({
-                success: false,
-                message: `Booking status is "${booking.status}", payment not allowed.`
-            });
-        }
-
-        // Update payment status
-        booking.status = "confirmed"; // confirm booking after payment
-        booking.reason = booking.reason || "Payment completed";
-
-        await booking.save();
-
-        const payment = new Payment({
-            booking: booking._id,
-            amount: booking.finalAmount,
-            paymentMethod: paymentMethod,
-            paymentStatus: "paid"
-        });
-
-        await payment.save();
-
-        logger.info(`[PAYMENT] Payment successful. BookingID: ${bookingId}, CustomerID: ${customerId}, Amount: ${booking.finalAmount}`);
-
-        const guesthouse = await Guesthouse.findById(booking.guesthouse);
-        const guesthouseId = guesthouse._id;
-
-        await createNotification(
-            { userId: guesthouseId, role: "guesthouse" }, // sender
-            { userId: customerId, role: "customer" },        // receiver
-            "Payment Successful",                            // title
-            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been confirmed.`
-        );
-
-        // send notification to guesthouse for received payment
-        await createNotification(
-            { userId: customerId, role: "customer" },  // sender = customer
-            { userId: guesthouseId, role: "guesthouse" },  // receiver = guesthouse
-            "Payment Received",
-            `payment ${booking.amount} received of bookingId ${bookingId} is successfully received.`
-        );
-
-        res.status(200).json({
-            success: true,
-            message: `Payment ${booking.finalAmount} successful for booking ${bookingId}`,
-            data: booking
-        });
-
-    } catch (error) {
-        logger.error(`[PAYMENT] Error processing payment: ${error.message}`, { stack: error.stack });
-        res.status(500).json({
-            success: false,
-            message: "Internal server error while processing payment",
-            error: error.message
-        });
-    }
-};
 
 exports.allBooking = async (req, res) => {
     try {
@@ -688,18 +902,17 @@ exports.allBooking = async (req, res) => {
         let query = { customer: customerId };
 
         if (status && status.toLowerCase() !== "all") {
-            query.status = status;
+            query.status = status.toLowerCase();
         }
 
         let bookings = await Booking.find(query)
-            .sort({ createdAt: -1 })
             .populate({
                 path: "guesthouse",
                 select: "name address guestHouseImage",
             })
-            .select("-__v -createdAt -updatedAt");
 
-        // Auto-update booking status to 'complete' if checkOut < today
+
+        // Auto-update confirmed bookings to 'completed' if checkOut < today
         const today = new Date();
         for (let booking of bookings) {
             if (booking.status === "confirmed" && new Date(booking.checkOut) < today) {
@@ -707,6 +920,8 @@ exports.allBooking = async (req, res) => {
                 await booking.save();
             }
         }
+
+        bookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         const formattedBookings = bookings.map((booking) => {
             const guesthouse = booking.guesthouse || {};
@@ -721,6 +936,24 @@ exports.allBooking = async (req, res) => {
             if (Array.isArray(booking.room)) roomCount = booking.room.length;
             else if (typeof booking.room === "number") roomCount = booking.room;
             else if (booking.room) roomCount = 1;
+
+            // Capitalize status
+            let statusFormatted = booking.status
+                ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1)
+                : "Pending";
+
+            // Payment status: if booking.status = pending, paymentStatus is pending
+
+            let paymentStatus = "N/A";
+
+            if (booking.status === "pending") {
+                paymentStatus = "pending";
+            } else if (booking.status === "cancelled") {
+                paymentStatus = "refunded";
+            } else {
+                paymentStatus = "paid";
+            }
+
 
             return {
                 id: booking._id,
@@ -738,11 +971,12 @@ exports.allBooking = async (req, res) => {
                 guest: booking.guest,
                 amount: booking.amount,
                 finalAmount: booking.finalAmount,
-                status: booking.status.charAt(0).toUpperCase() +
-                    booking.status.slice(1), // <-- Capitalized here,
-                paymentStatus: booking.paymentStatus,
+                status: statusFormatted,
+                paymentStatus,
+                remainingTime: booking.checkIn ? getRemainingTime(booking.checkIn, booking.checkOut, booking.status) : "N/A",
             };
         });
+
 
         logger.info(`[BOOKING] Successfully fetched ${formattedBookings.length} bookings for customer: ${customerId}`);
 
@@ -762,6 +996,7 @@ exports.allBooking = async (req, res) => {
     }
 };
 
+
 exports.getBooking = async (req, res) => {
     let bookingId;
     try {
@@ -778,7 +1013,11 @@ exports.getBooking = async (req, res) => {
             })
             .populate({
                 path: "room",
-                select: "roomCategory price"
+                populate: {
+                    path: "roomCategory",
+                    select: "name",
+                },
+                select: "roomCategory price",
             })
             .populate({
                 path: "customer",
@@ -810,7 +1049,10 @@ exports.getBooking = async (req, res) => {
 
         // Room count and type
         let roomCount = booking.room?.length || 0; // default 1 because schema is single room
-        let roomType = booking.room && booking.room.roomCategory ? booking.room.roomCategory : "";
+        let roomType = [];
+        if (booking.room && Array.isArray(booking.room) && booking.room.length > 0) {
+            roomType = booking.room.map(r => r.roomCategory.name || "");
+        }
 
         const paymentDetails = payment
             ? {
@@ -824,14 +1066,13 @@ exports.getBooking = async (req, res) => {
                     : null,
             }
             : {
-                customerName: "N/A",
-                customerProfileImage: "N/A",
-                customerContact: "N/A",
+                customerName: customer.name,
+                customerProfileImage: `${BASE_URL}/uploads/profileImage/${customer.profileImage}`,
+                customerContact: customer.phone || "",
                 paymentMethod: "N/A",
                 paymentStatus: "unpaid",
-                paymentDate: null,
+                paymentDate: "N/A",
             };
-
 
         const formattedBooking = {
             id: bookingId,
@@ -872,92 +1113,310 @@ exports.getBooking = async (req, res) => {
     }
 };
 
-exports.cancelBooking = async (req, res) => {
-    const { bookingId } = req.body;
-    const customerId = req.user.id;
-    try {
 
-        // Fetch the booking
+exports.downloadInvoice = async (req, res) => {
+    try {
+        const { bookingId } = req.body;
+
+        // Populate guesthouse, customer, and roomCategory (to get names instead of IDs)
+        const booking = await Booking.findById(bookingId)
+            .populate({ path: "guesthouse", select: "name address guestHouseImage" })
+            .populate({
+                path: "room",
+                populate: { path: "roomCategory", select: "name" },
+                select: "roomCategory price"
+            })
+            .populate({ path: "customer", select: "name phone profileImage" });
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        //  Ensure invoice folder exists
+        const invoiceDir = path.resolve(__dirname, "../public/invoices");
+        if (!fs.existsSync(invoiceDir)) {
+            fs.mkdirSync(invoiceDir, { recursive: true });
+        }
+
+        // Create invoice PDF path
+        const invoicePath = path.join(invoiceDir, `invoice-${bookingId}.pdf`);
+        const doc = new PDFDocument({ margin: 50 });
+        const writeStream = fs.createWriteStream(invoicePath);
+        doc.pipe(writeStream);
+
+        //  Header
+        doc.fontSize(22).text("Booking Invoice", { align: "center", underline: true });
+        doc.moveDown(1);
+
+        //  Guesthouse Information
+        const guesthouse = booking.guesthouse || {};
+        doc.fontSize(14).text("Guesthouse Information", { underline: true });
+        doc.fontSize(12)
+            .text(`Name: ${guesthouse.name || "N/A"}`)
+            .text(`Address: ${guesthouse.address || "N/A"}`);
+        doc.moveDown(0.5);
+
+        //  Customer Information
+        const customer = booking.customer || {};
+        const payment = await Payment.findOne({ booking: bookingId }) || {};
+        doc.fontSize(14).text("Customer Information", { underline: true });
+        doc.fontSize(12)
+            .text(`Name: ${customer.name || payment.customerName || "N/A"}`)
+            .text(`Contact: ${customer.phone || payment.customerContact || "N/A"}`)
+            .text(`Payment Method: ${payment.paymentMethod || "N/A"}`)
+            .text(`Payment Status: ${payment.paymentStatus || "N/A"}`);
+        doc.moveDown(0.5);
+
+        //  Booking Details
+        const checkIn = booking.checkIn ? new Date(booking.checkIn).toLocaleDateString("en-IN") : "N/A";
+        const checkOut = booking.checkOut ? new Date(booking.checkOut).toLocaleDateString("en-IN") : "N/A";
+        let totalNights = booking.nights;
+        if (!totalNights && booking.checkIn && booking.checkOut) {
+            const diff = new Date(booking.checkOut) - new Date(booking.checkIn);
+            totalNights = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        }
+
+        let roomType = [];
+        if (booking.room && Array.isArray(booking.room) && booking.room.length > 0) {
+            roomType = booking.room.map(r => r.roomCategory.name || "");
+        }
+
+        doc.fontSize(14).text("Booking Details", { underline: true });
+        doc.fontSize(12)
+            .text(`Check-In: ${checkIn}`)
+            .text(`Check-Out: ${checkOut}`)
+            .text(`Total Nights: ${totalNights || 0}`)
+            .text(`Room-category${roomType.length > 1 ? "(s)" : ""}: ${roomType.join(", ")}`)
+            .text(`Guests: ${booking.guest || 0}`);
+        doc.moveDown(0.5);
+
+        //  Pricing Summary
+        doc.fontSize(14).text("Pricing Summary", { underline: true });
+        doc.fontSize(12)
+            .text(`Amount: Rs.${booking.amount || 0}`)
+            .text(`Discount: Rs.${booking.discount || 0}`)
+            .text(`Cleaning Fee: Rs.${booking.cleaningFee || 0}`)
+            .text(`Tax Amount: Rs.${booking.taxAmount || 0}`)
+            .text(`Final Amount: Rs.${booking.finalAmount || 0}`);
+        doc.moveDown(0.5);
+
+        // status
+        doc.fontSize(14).text("Status", { underline: true });
+        doc.fontSize(12)
+            .text(`Booking Status: ${booking.status ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1) : "N/A"}`)
+            .text(`Booking Created At: ${booking.createdAt ? new Date(booking.createdAt).toLocaleDateString("en-IN") : "N/A"}`);
+
+        // Finalize PDF
+        doc.end();
+
+        // Return public URL after PDF is written
+        writeStream.on("finish", () => {
+            const fileUrl = `${BASE_URL}/invoices/invoice-${bookingId}.pdf`;
+            res.json({
+                success: true,
+                message: "Invoice generated successfully.",
+                url: fileUrl
+            });
+        });
+
+        writeStream.on("error", (err) => {
+            console.error("PDF write error:", err);
+            res.status(500).json({ success: false, message: "Error saving invoice" });
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Error generating invoice" });
+    }
+};
+
+exports.cancelBooking = async (req, res) => {
+    const { bookingId, refundType } = req.body;
+    const customerId = req.user.id;
+
+    try {
+        if (!bookingId || !refundType) {
+            return res.status(400).json({
+                success: false,
+                message: "Booking ID and refund type are required.",
+            });
+        }
+
+        if (!["wallet", "bank"].includes(refundType.toLowerCase())) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid refund type. Choose 'wallet' or 'bank'.",
+            });
+        }
+
+        // 🔹 Find booking by ID & customer
         const booking = await Booking.findOne({ _id: bookingId, customer: customerId });
         if (!booking) {
             return res.status(404).json({
                 success: false,
-                message: `Booking with ID ${bookingId} not found.`
+                message: `Booking with ID ${bookingId} not found.`,
             });
         }
 
         const today = new Date();
+        const checkInTime = new Date(booking.checkIn);
+        const checkOutTime = new Date(booking.checkOut);
 
-        if (new Date(booking.checkOut) < today) {
+        if (checkOutTime < today) {
             return res.status(400).json({
                 success: false,
-                message: "Cannot cancel booking. Stay period is already completed."
-            })
+                message: "Cannot cancel booking. Stay period already completed.",
+            });
         }
 
-        // Only allow cancel if status is pending or confirmed
         if (!["pending", "confirmed"].includes(booking.status)) {
             return res.status(400).json({
                 success: false,
-                message: `Cannot cancel booking. Current status is "${booking.status}".`
+                message: `Cannot cancel booking. Current status is "${booking.status}".`,
             });
         }
 
-        // Update booking status
-        booking.status = "cancelled";
+        // 🔹 Remaining hours before check-in
+        const remainingHours = (checkInTime - today) / (1000 * 60 * 60);
 
+        //  Include checkout date (fixed)
+        const getDatesBetween = (start, end) => {
+            const dates = [];
+            const current = new Date(start);
+            while (current <= end) { //  changed < to <=
+                dates.push(new Date(current).toISOString().split("T")[0]);
+                current.setDate(current.getDate() + 1);
+            }
+            return dates;
+        };
 
-        if (booking.paymentStatus === "paid") {
-            booking.paymentStatus = "refunded";
-            booking.reason = "Cancelled by customer after payment";
+        const bookedDates = getDatesBetween(checkInTime, checkOutTime);
 
-        } else {
-            booking.reason = "Cancelled by customer";
+        //  Function to release room availability (supports array or single)
+        const releaseRoomAvailability = async (roomData) => {
+            if (!roomData) return;
+            const roomIds = Array.isArray(roomData) ? roomData : [roomData];
+
+            for (const roomId of roomIds) {
+                const room = await Room.findById(roomId);
+                if (room && Array.isArray(room.availability)) {
+                    room.availability = room.availability.map((a) => {
+                        const dateStr = new Date(a.date).toISOString().split("T")[0];
+                        if (bookedDates.includes(dateStr)) {
+                            a.isAvailable = true; //  restore availability
+                        }
+                        return a;
+                    });
+                    await room.save({ validateBeforeSave: false });
+                    console.log(`Room ${room._id} availability restored.`);
+                }
+            }
+        };
+
+        //  CASE 1: Cancellation within 12 hours → No refund
+        if (remainingHours < 12) {
+            booking.status = "cancelled";
+            booking.reason = "Cancelled — No refund (less than 12 hours before check-in)";
+            await booking.save();
+
+            await releaseRoomAvailability(booking.room);
+
+            const guesthouse = await Guesthouse.findById(booking.guesthouse);
+            if (guesthouse) {
+                await createNotification(
+                    { userId: guesthouse._id, role: "guesthouse" },
+                    { userId: customerId, role: "customer" },
+                    "Booking Cancelled (No Refund)",
+                    `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} was cancelled less than 12 hours before check-in. No refund applicable.`
+                );
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Booking cancelled successfully, but no refund (less than 12 hours before check-in).",
+            });
         }
 
+        //  CASE 2: Refund applicable
+        const refundAmount = booking.finalAmount || 0;
+
+        if (refundType.toLowerCase() === "wallet") {
+            let wallet = await Wallet.findOne({ user: customerId });
+
+            if (!wallet) {
+                wallet = new Wallet({
+                    user: customerId,
+                    balance: refundAmount,
+                    transactions: [
+                        { amount: refundAmount, type: "credit", transactionId: `REF-${Date.now()}` },
+                    ],
+                });
+            } else {
+                wallet.balance += refundAmount;
+                wallet.transactions.push({
+                    amount: refundAmount,
+                    type: "credit",
+                    transactionId: `TRANS-${Date.now()}`,
+                });
+            }
+
+            await wallet.save();
+        }
+
+        booking.status = "cancelled";
+        booking.reason =
+            refundType.toLowerCase() === "wallet"
+                ? "Booking cancelled — refund sent to wallet."
+                : "Booking cancelled — refund sent to bank.";
         await booking.save();
 
-        // Find the room related to this booking
-        const room = await Room.findById(booking.room);
-
-        if (room && room.availability) {
-            room.availability = room.availability.filter(slot => {
-                const slotStart = new Date(slot.startDate).getTime();
-                const slotEnd = new Date(slot.endDate).getTime();
-                const bookingStart = new Date(booking.checkIn).getTime();
-                const bookingEnd = new Date(booking.checkOut).getTime();
-
-                // delete slot only if matches the cancelled booking
-                return !(slotStart === bookingStart && slotEnd === bookingEnd && slot.isAvailable === false);
-            });
-
-            await room.save();
+        const payment = await Payment.findOne({ booking: bookingId });
+        if (payment && payment.paymentStatus === "paid") {
+            payment.paymentStatus = "refunded";
+            payment.refundDate = new Date();
+            await payment.save();
         }
 
-        const guesthouse = await Guesthouse.findById(booking.guesthouse);
-        const guesthouseId = guesthouse._id;
-        await createNotification(
-            { userId: guesthouseId, role: "guesthouse" }, // sender
-            { userId: customerId, role: "customer" },        // receiver
-            "Cancel Booking",                            // title
-            `Your booking at ${guesthouse.name} from ${booking.checkIn} to ${booking.checkOut} has been cancel. Amount ${booking.amount} will be refuded.`
-        );
+        //  Restore availability for all booked rooms
+        await releaseRoomAvailability(booking.room);
 
-        res.status(200).json({
+        // Notification
+        const guesthouse = await Guesthouse.findById(booking.guesthouse);
+        if (guesthouse) {
+            await createNotification(
+                { userId: customerId, role: "customer" },
+                { userId: guesthouse._id, role: "guesthouse" },
+                "Booking Cancelled & Refunded",
+                `Booking for "${guesthouse.name}" has been cancelled by the customer. Refund of ₹${refundAmount} sent to ${refundType}. Stay was from ${checkInTime.toDateString()} to ${checkOutTime.toDateString()}.`,
+                "booking"
+            );
+            console.log(`[NOTIFICATION] Sent: Booking cancelled with refund for "${guesthouse.name}" to owner ${guesthouse.owner}.`);
+
+            // to customer
+            await createNotification(
+                { userId: guesthouse._id, role: "guesthouse" },
+                { userId: customerId, role: "customer" },
+                "Booking Cancelled & Refunded",
+                `Booking for "${guesthouse.name}" has been cancelled by the customer. Refund of ₹${refundAmount} sent to ${refundType}. Stay was from ${checkInTime.toDateString()} to ${checkOutTime.toDateString()}.`,
+                "booking"
+            );
+            console.log(`[NOTIFICATION] Sent: Booking cancelled with refund for "${guesthouse.name}" to owner ${guesthouse.owner}.`);
+        }
+        return res.status(200).json({
             success: true,
-            message: `Booking with ID ${bookingId} has been successfully cancelled.`,
-            data: booking
+            message: `Booking cancelled successfully. Refund sent to ${refundType}.`,
         });
 
     } catch (error) {
-        logger.error(`[BOOKING] Error cancelling booking ${bookingId} for customer ${customerId}. Error: ${error.message}`, { stack: error.stack });
-        res.status(500).json({
+        console.error(" Error cancelling booking:", error);
+        return res.status(500).json({
             success: false,
             message: "Internal server error while cancelling booking.",
-            error: error.message
+            error: error.message,
         });
     }
 };
+
 
 exports.pastBooking = async (req, res) => {
     try {
@@ -1038,6 +1497,7 @@ exports.pastBooking = async (req, res) => {
                 status: booking.status.charAt(0).toUpperCase() +
                     booking.status.slice(1), // <-- Capitalized here
                 paymentStatus: booking.paymentStatus,
+                remainingTime: booking.checkIn ? getRemainingTime(booking.checkIn, booking.checkOut, booking.status) : "N/A",
             };
         });
 
@@ -1140,6 +1600,7 @@ exports.upcomingBooking = async (req, res) => {
                 status: booking.status.charAt(0).toUpperCase() +
                     booking.status.slice(1), // <-- Capitalized here
                 paymentStatus: booking.paymentStatus,
+                remainingTime: booking.checkIn ? getRemainingTime(booking.checkIn, booking.checkOut, booking.status) : "N/A",
             };
         });
 
@@ -1226,6 +1687,7 @@ exports.getCancelBookings = async (req, res) => {
                 status: booking.status.charAt(0).toUpperCase() +
                     booking.status.slice(1), // <-- Capitalized here,
                 paymentStatus: booking.paymentStatus,
+                remainingTime: booking.checkIn ? getRemainingTime(booking.checkIn, booking.checkOut, booking.status) : "N/A",
             };
         });
 
@@ -1246,94 +1708,6 @@ exports.getCancelBookings = async (req, res) => {
         });
     }
 };
-
-// exports.pendingBooking = async (req, res) => {
-//     try {
-//         const customerId = req.user.id;
-//         const pendingBookings = await Booking.find({
-//             customer: customerId,
-//             status: "pending"
-//         })
-//             .sort({ checkOut: -1 }) // latest past bookings first
-//             .populate({
-//                 path: "guesthouse",
-//                 select: "name address guestHouseImage",
-//             })
-//             .select("-__v -createdAt -updatedAt");
-
-//         if (!pendingBookings || pendingBookings.length === 0) {
-//             logger.info(`[BOOKING] No pending bookings found for customer ${customerId}`);
-//             return res.status(200).json({
-//                 success: true,
-//                 message: "No pending bookings found.",
-//                 count: 0,
-//                 data: [],
-//                 serverTime: new Date().toISOString()
-//             });
-//         }
-
-//         const formattedBookings = pendingBookings.map((booking) => {
-//             const guesthouse = booking.guesthouse || {};
-//             let guestHouseImg = "";
-
-//             if (guesthouse.guestHouseImage) {
-//                 if (Array.isArray(guesthouse.guestHouseImage)) {
-//                     guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage[0].trim()}`;
-//                 } else if (typeof guesthouse.guestHouseImage === "string") {
-//                     guestHouseImg = `${BASE_URL}/uploads/guestHouseImage/${guesthouse.guestHouseImage.split(",")[0].trim()}`;
-//                 }
-//             }
-
-//             // Room count logic
-//             let roomCount = 0;
-//             if (Array.isArray(booking.room)) {
-//                 roomCount = booking.room.length;
-//             } else if (typeof booking.room === "number") {
-//                 roomCount = booking.room;
-//             } else if (booking.room) {
-//                 roomCount = 1;
-//             }
-
-//             return {
-//                 id: booking._id,
-//                 guesthouse: guesthouse._id || null,
-//                 guestHouseImg: guestHouseImg,
-//                 guestHouseName: guesthouse.name || "",
-//                 guestHouseAddress: guesthouse.address || "",
-//                 checkIn: booking.checkIn
-//                     ? new Date(booking.checkIn).toISOString().split("T")[0]
-//                     : "",
-//                 checkOut: booking.checkOut
-//                     ? new Date(booking.checkOut).toISOString().split("T")[0]
-//                     : "",
-//                 room: roomCount,
-//                 guest: booking.guest,
-//                 amount: booking.amount,
-//                 finalAmount: booking.finalAmount,
-//                 status: booking.status.charAt(0).toUpperCase() +
-//                     booking.status.slice(1), // <-- Capitalized here
-//                 paymentStatus: booking.paymentStatus,
-//             };
-//         });
-
-//         logger.info(`[BOOKING] Fetched ${formattedBookings.length} pending bookings for customer ${customerId}`);
-
-//         res.status(200).json({
-//             success: true,
-//             message: "pending bookings fetched successfully.",
-//             count: formattedBookings.length,
-//             data: formattedBookings
-//         });
-
-//     } catch (error) {
-//         res.status(500).json({
-//             success: false,
-//             message: "error fetching pending bookings.",
-//             error: error
-//         })
-//     }
-// }
-
 
 //_______________________________________ Reviews _____________________________________
 
@@ -1465,8 +1839,7 @@ exports.getReviewByGuestHouse = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error fetching guesthouse reviews.",
-            error: err.message,
-            serverTime: new Date().toISOString()
+            error: err.message
         });
     }
 };
@@ -1474,48 +1847,53 @@ exports.getReviewByGuestHouse = async (req, res) => {
 exports.getAllPromos = async (req, res) => {
     try {
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // only date part
+        today.setHours(0, 0, 0, 0); // remove time portion
+        const startOfToday = new Date(today.setHours(0, 0, 0, 0));
+        const endOfToday = new Date(today.setHours(23, 59, 59, 999));
 
         const promos = await Promo.find({
-            isActive: true,
-            endDate: { $gte: today }
-        }).sort({ createdAt: -1 })
-            .select("-createdAt -isActive")
+            status: "active",
+            startDate: { $lte: startOfToday }, // promo already started
+            endDate: { $gte: endOfToday },   // promo not yet ended
+        })
+            .sort({ createdAt: -1 })
+            .select("-createdAt -updatedAt -__v");
 
         if (!promos || promos.length === 0) {
-            logger.info("[PROMO] No active promo codes found.");
-            return res.status(404).json({
+            return res.status(200).json({
                 success: true,
-                message: "No active promo codes found.",
-                NoOfPromos: 0,
-                data: []
+                message: "No active promo codes available for today.",
+                count: 0,
+                data: [],
             });
         }
 
-        logger.info(`[PROMO] Fetched ${promos.length} active promo codes.`);
-
-        const formattedPromos = promos.map(p => ({
+        const formattedPromos = promos.map((p) => ({
             id: p._id,
             code: p.code,
             discountType: p.discountType,
             discountValue: p.discountValue,
-            startDate: p.startDate ? new Date(p.startDate).toISOString().split("T")[0] : null,
-            endDate: p.endDate ? new Date(p.endDate).toISOString().split("T")[0] : null,
+            startDate: p.startDate
+                ? new Date(p.startDate).toISOString().split("T")[0]
+                : null,
+            endDate: p.endDate
+                ? new Date(p.endDate).toISOString().split("T")[0]
+                : null,
+            status: p.status,
         }));
 
         return res.status(200).json({
             success: true,
-            message: "Active promo codes fetched successfully.",
+            message: "Active promo codes for today fetched successfully.",
             count: formattedPromos.length,
-            data: formattedPromos
+            data: formattedPromos,
         });
-
     } catch (err) {
-        logger.error(`[PROMO] Error fetching promos: ${err.message}`, { stack: err.stack });
+        console.error(`[PROMO] Error fetching promos: ${err.message}`);
         return res.status(500).json({
             success: false,
             message: "Error fetching promos.",
-            error: err.message
+            error: err.message,
         });
     }
 };
@@ -1569,7 +1947,10 @@ exports.getPromoById = async (req, res) => {
     }
 };
 
+//__________________ Notification _________________________
+
 exports.getAllNotification = async (req, res) => {
+    v
     try {
         const customerId = req.user.id;
 
@@ -1609,6 +1990,11 @@ exports.getAllNotification = async (req, res) => {
         });
 
         logger.info(`[NOTIFICATION] Fetched ${mappedNotifications.length} notifications for customer: ${customerId}`);
+
+        await User.findByIdAndUpdate(req.user.id, {
+            lastNotificationCheck: new Date()
+        });
+
         return res.status(200).json({
             success: true,
             statusCode: 200,
@@ -1711,6 +2097,61 @@ exports.deleteNotification = async (req, res) => {
         });
     }
 };
+
+
+exports.deleteAllNotifications = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+
+        const result = await Notification.deleteMany({
+            "receiver.userId": customerId,
+            "receiver.role": "customer"
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "All notifications deleted successfully.",
+            deletedCount: result.deletedCount
+        });
+
+    } catch (error) {
+        console.error("Error deleting notifications:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error.",
+            error: error.message
+        });
+    }
+};
+
+exports.countNewNotifications = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+        const customer = await User.findById(customerId);
+        const lastCheck = customer.lastNotificationCheck || new Date(0); // agar null ho toh purani date
+
+        const newCount = await Notification.countDocuments({
+            "receiver.userId": customerId,
+            "receiver.role": "customer",
+            createdAt: { $gt: lastCheck }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "New notification count fetched.",
+            newCount
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching new notification count.",
+            error: error.message
+        });
+    }
+}
+
+//_______________________________ favorites _____________________
 
 exports.getfavorites = async (req, res) => {
     try {
@@ -1823,52 +2264,18 @@ exports.addFavorites = async (req, res) => {
     }
 };
 
-exports.getbedroom = async (req, res) => {
-    try {
-        const bedroom = await Bedroom.find().sort().select("-__v"); // Assuming only one document exists
+//______________________________ for filters ________________________
 
-        if (!bedroom || bedroom.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "No bedroom data found",
-            });
-        }
-
-        // Sort numerically based on number in name
-        const sortedBedrooms = bedroom.sort((a, b) => {
-            const numA = parseInt(a.name); // e.g., "3 bedroom" => 3
-            const numB = parseInt(b.name);
-            return numA - numB;
-        });
-
-        // Map to rename _id -> id
-        const formattedBedrooms = sortedBedrooms.map(b => {
-            const obj = b.toObject();
-            obj.id = obj._id;
-            delete obj._id;
-            return obj;
-        });
-
-        const response = {
-            success: true,
-            message: "Successfully fetched all bedroom types",
-            data: formattedBedrooms
-        };
-
-        res.status(200).json(response);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching bedroom data",
-            error: error.message,
-        });
-    }
-};
 
 exports.getAllAtolls = async (req, res) => {
     try {
-        const atolls = await Atolls.find({}, { _id: 1, name: 1, createdAt: 1 }).lean();
+        const atolls = await Atolls.find(
+            { status: "active" },
+            { _id: 1, name: 1, createdAt: 1 }
+        )
+            .sort({ createdAt: -1 }) // descending order (newest first)
+            .lean();
+
 
         const modifiedAtolls = atolls.map(atoll => ({
             id: atoll._id,
@@ -1904,9 +2311,10 @@ exports.getAllfacilities = async (req, res) => {
         res.status(200).json({
             success: true,
             count: modifiedAtolls.length,
-            message: "Succefully fetch all facilities",
+            message: "Successfully fetch all facilities",
             data: modifiedAtolls
         });
+
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -1918,7 +2326,7 @@ exports.getAllfacilities = async (req, res) => {
 
 exports.getAllIslands = async (req, res) => {
     try {
-        const { id } = req.body;
+        const { id } = req.body || {};
 
         if (!id) {
             return res.status(400).json({
@@ -1926,8 +2334,15 @@ exports.getAllIslands = async (req, res) => {
                 message: "atollId is required"
             });
         }
+        const atoll = await Atoll.find({ _id: id, status: "active" });
+        if (!atoll.length) {
+            return res.status(404).json({
+                success: false,
+                message: "No active atoll found"
+            });
+        }
 
-        const islands = await Island.find({ atoll: id }).select("-__v -createdAt -updatedAt"); // extra fields hata sakte ho
+        const islands = await Island.find({ status: "active", atoll: id }).select("-__v -createdAt -updatedAt"); // extra fields hata sakte ho
 
         // Convert _id -> id
         const formattedIslands = islands.map(island => {
@@ -1950,6 +2365,261 @@ exports.getAllIslands = async (req, res) => {
         });
     }
 };
+
+exports.getAllBedTypes = async (req, res) => {
+    try {
+        const bedTypes = await BedType.find().select("name").lean();
+
+        res.status(200).json({
+            success: true,
+            count: bedTypes.length,
+            message: "Successfully fetched all bedTypes",
+            data: bedTypes
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching atolls",
+            error: error.message
+        });
+    }
+}
+
+//________________________________ card _________________________________
+
+exports.addCard = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+        const customer = await User.findById(customerId);
+
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: "Customer not found"
+            });
+        }
+
+        const { cardNumber, expiry, cvv, fullName } = req.body;
+
+        // Required fields check
+        if (!cardNumber || !expiry || !cvv || !fullName) {
+            return res.status(400).json({
+                success: false,
+                message: "cardNumber, expiry, cvv and fullName are required"
+            });
+        }
+
+        // Clean card number
+        const cleanedNumber = cardNumber.replace(/\D/g, '');
+
+        // Duplicate card check (after cleanedNumber is defined)
+        const existingCard = await Card.findOne({
+            user: customerId,
+            cardNumber: cleanedNumber
+        });
+
+        if (existingCard) {
+            return res.status(400).json({
+                success: false,
+                message: "This card is already added."
+            });
+        }
+
+        // Card validation
+        if (cleanedNumber.length !== 16) {
+            return res.status(400).json({ success: false, message: "Invalid Card number" });
+        }
+
+        if (isExpired(expiry)) {
+            return res.status(400).json({ success: false, message: "Card is expired" });
+        }
+
+        const cvvStr = cvv.toString().trim();
+        if (!/^\d{3,4}$/.test(cvvStr)) {
+            return res.status(400).json({ success: false, message: "Invalid CVV" });
+        }
+
+        const formattedFullName = fullName
+            .trim()
+            .split(/\s+/)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+
+        // Create & save card
+        const newCard = new Card({
+            user: customerId,
+            cardNumber: cleanedNumber,
+            expiry,
+            fullName: formattedFullName,
+            cvv: cvvStr // remove in production
+        });
+
+        await newCard.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Card added successfully",
+            data: {
+                id: newCard._id,
+                last4: cleanedNumber.slice(-4),
+                expiry: newCard.expiry,
+                fullName: newCard.fullName
+            }
+        });
+
+    } catch (error) {
+        logger.error(`Error adding card for user ${req.user.id}: ${error}`);
+        return res.status(500).json({
+            success: false,
+            message: "Error adding card details",
+            error: error.message
+        });
+    }
+};
+
+exports.getAllCards = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Fetch all cards of the user, newest first
+        const cards = await Card.find({ user: userId }).sort({ createdAt: -1 });
+
+        if (!cards || cards.length === 0) {
+            return res.status(200).json({ success: true, data: [] });
+        }
+
+        const formatCardNumber = (num) => {
+            const cleaned = (num + '').replace(/\D/g, '');
+            return cleaned.match(/.{1,4}/g)?.join(' ') ?? cleaned;
+        }
+
+        // Map to safe response
+        const safeCards = cards.map(card => {
+            return {
+                id: card._id,
+                fullName: card.fullName,
+                cardNumber: formatCardNumber(card.cardNumber),
+                expiry: card.expiry,
+
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Successfully fetch all cards",
+            data: safeCards
+        });
+
+    } catch (error) {
+        console.error(`[CARD] Error fetching cards for user ${req.user?.id}:`, error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch cards',
+            error: error.message
+        });
+    }
+};
+
+//___________________________________ WALLET _____________________________________
+exports.addWallet = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+        const { amount } = req.body;
+
+        //  Validate amount
+        if (!amount || isNaN(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid amount is required"
+            });
+        }
+
+        //  Find wallet
+        let wallet = await Wallet.findOne({ user: customerId });
+
+        //  Create transaction
+        const transaction = {
+            amount,
+            type: 'credit',
+            transactionId: `TRANS${Date.now()}`,
+            date: new Date()
+        };
+
+        //  Create or update wallet
+        if (!wallet) {
+            wallet = new Wallet({
+                user: customerId,
+                balance: amount,
+                transactions: [transaction]
+            });
+        } else {
+            wallet.balance += amount;
+            wallet.transactions.push(transaction);
+            wallet.updatedAt = new Date();
+        }
+
+        await wallet.save();
+
+        //  Response
+        return res.status(200).json({
+            success: true,
+            message: 'Amount added successfully',
+            data: {
+                balance: wallet.balance,
+                transaction
+            }
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Error while adding amount to wallet",
+            error: error.message
+        });
+    }
+};
+
+
+exports.getWallet = async (req, res) => {
+    try {
+        const wallet = await Wallet.findOne({ user: req.user.id });
+
+        if (!wallet) {
+            return res.status(200).json({
+                success: true,
+                message: 'Wallet not found, returning default values',
+                data: {
+                    balance: 0,
+                    transactions: []
+                }
+            });
+        }
+
+        // Ensure sorting works even if date is string
+        const sortedTransactions = [...wallet.transactions].sort((a, b) => {
+            return new Date(b.date) - new Date(a.date);
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Wallet fetched successfully',
+            data: {
+                balance: wallet.balance,
+                transactions: sortedTransactions
+            }
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: 'Server error while fetching wallet',
+            error: err.message
+        });
+    }
+};
+
+
+
 
 
 

@@ -4,37 +4,31 @@ const guesthouseController = require('../controller/guesthouseController');
 const auth = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/upload');
 
+router.post("/guesthouse/rooms/options", auth(["guesthouse"]), guesthouseController.getRoomOptions);
+
 // Guesthouse Profile Management
-router.post("/guesthouse/guesthouses", auth(["guesthouse"]), upload.array("guestHouseImage", 10), guesthouseController.manageGuestHouse);
-router.get("/guesthouse/guesthouses/my", auth(["guesthouse"]), guesthouseController.getMyGuesthouse);
+router.post("/guesthouse/manage-guesthouses", auth(["guesthouse"]), upload.array("guestHouseImage", 10), guesthouseController.manageGuestHouse);
+router.post("/guesthouse/view-guesthouses", auth(["guesthouse"]), guesthouseController.getMyGuesthouse);
 
 // Room Management
-router.post("/guesthouse/rooms", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.addRoom);
-router.get("/guesthouse/rooms", auth(["guesthouse"]), guesthouseController.getAllRooms);
-router.get("/guesthouse/rooms/disable", auth(["guesthouse"]), guesthouseController.getDisableRooms);
-router.get("/guesthouse/rooms/getRoomById", auth(["guesthouse"]), guesthouseController.getRoomById);
-router.put("/guesthouse/rooms/:roomId", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.updateRoom);
-router.delete("/guesthouse/rooms/:roomId/delete", auth(["guesthouse"]), guesthouseController.deleteRoom);
-router.post("/guesthouse/rooms/disable", auth(["guesthouse"]), guesthouseController.activeInActive);
+router.post("/guesthouse/add-rooms", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.addRoom);
+router.post("/guesthouse/rooms", auth(["guesthouse"]), guesthouseController.getAllRooms);
+// router.get("/guesthouse/rooms/disable", auth(["guesthouse"]), guesthouseController.getDisableRooms);
+router.post("/guesthouse/rooms/getRoomById", auth(["guesthouse"]), guesthouseController.getRoomById);
+router.post("/guesthouse/rooms/update", auth(["guesthouse"]), upload.array("photos", 5), guesthouseController.updateRoom);
+router.post("/guesthouse/rooms/delete", auth(["guesthouse"]), guesthouseController.deleteRoom);
+// router.post("/guesthouse/rooms/disable", auth(["guesthouse"]), guesthouseController.activeInActive);
 
 // Booking Management
-router.get("/guesthouse/bookings", auth(["guesthouse"]), guesthouseController.getAllBookings);
-router.get("/guesthouse/bookings/upcoming", auth(["guesthouse"]), guesthouseController.getUpcomingBookings);
-router.get("/guesthouse/bookings/past", auth(["guesthouse"]), guesthouseController.getPastBookings);
-router.get("/guesthouse/bookings/:bookingId", auth(["guesthouse"]), guesthouseController.getBookingById);
-router.put("/guesthouse/bookings/:bookingId/cancel", auth(["guesthouse"]), guesthouseController.cancelBooking);
-router.get("/guesthouse/bookings/:bookingId/contact", auth(["guesthouse"]), guesthouseController.getContactDetails);
+router.post("/guesthouse/bookings/list", auth(["guesthouse"]), guesthouseController.getAllBookings);
+router.post("/guesthouse/bookings/view", auth(["guesthouse"]), guesthouseController.getBookingById);
+router.post("/guesthouse/bookings/download-invoice", auth(["guesthouse"]), guesthouseController.downloadInvoice);
 
-// Reviews & Notifications
-router.get("/guesthouse/reviews", auth(["guesthouse"]), guesthouseController.getAllReviews);
-router.get("/guesthouse/reviews/:reviewId", auth(["guesthouse"]), guesthouseController.getReviewById);
-router.get("/guesthouse/reviews/room/:roomId", auth(["guesthouse"]), guesthouseController.getReviewByRoomId)
 
-router.get("/guesthouse/notifications", auth(["guesthouse"]), guesthouseController.getAllNotification);
-router.put("/guesthouse/notifications/:notificationId/read", auth(["guesthouse"]), guesthouseController.readNotification);
-router.delete("/guesthouse/notifications/:notificationId/delete", auth(["guesthouse"]), guesthouseController.deleteNotification);
-router.get("/guesthouse/notifications/unread", auth(["guesthouse"]), guesthouseController.unreadNotification);
+// notificaition
+router.post("/guesthouse/notifications/list", auth(["guesthouse"]), guesthouseController.getAllNotification);
+router.post("/guesthouse/notifications/delete-all", auth(["guesthouse"]), guesthouseController.deleteAllNotifications);
+router.post("/guesthouse/notifications/new-count", auth(["guesthouse"]), guesthouseController.countNewNotifications);
 
-router.get("/guesthouse/totalRevenue", auth(["guesthouse"]), guesthouseController.totalRevenue);
 
 module.exports = router;

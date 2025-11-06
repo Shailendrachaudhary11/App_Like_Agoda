@@ -7,7 +7,7 @@ const Admin = require("../models/adminUser")
 
 exports.register = async (req, res) => {
     try {
-        let { name, email, phone, password, role, address } = req.body;
+        let { name, email, phone, password, confirmPassword, role, address } = req.body;
 
         //Required fields
         if (!name || !email || !phone || !password) {
@@ -15,6 +15,12 @@ exports.register = async (req, res) => {
                 success: false,
                 message: "Name, Email, Password, and Phone are required."
             });
+        }
+
+        if (typeof confirmPassword !== "undefined") {
+            if (password !== confirmPassword) {
+                return res.status(400).json({ success: false, message: "Password and confirmPassword do not match" });
+            }
         }
 
         //Password length
@@ -60,7 +66,7 @@ exports.register = async (req, res) => {
             password: hashedPassword,
             role: userRole,
             profileImage: null,
-            status: userRole === "customer" ? "approved" : "pending"
+            status: userRole === "customer" ? "active" : "inactive"
         });
 
         if (req.file) {
@@ -158,11 +164,11 @@ exports.login = async (req, res) => {
         }
 
         //ck account status
-        if (user.status !== "approved") {
+        if (user.status !== "active") {
             return res.status(403).json({
                 success: false,
                 statusCode: 403,
-                message: "Your account is not active or has been suspended.",
+                message: "Your account is not active.",
             });
         }
 
@@ -207,22 +213,25 @@ exports.login = async (req, res) => {
 
 exports.getMyProfile = async (req, res) => {
     try {
+
+        const userId = req.user.id;
+        const user = await User.findById(userId);
         const BASE_URL = process.env.BASE_URL;
 
         //ld profile image URL
-        const profileImageUrl = req.user.profileImage
-            ? `${BASE_URL}/uploads/profileImage/${req.user.profileImage}`
+        const profileImageUrl = user.profileImage
+            ? `${BASE_URL}/uploads/profileImage/${user.profileImage}`
             : null;
 
 
         const userData = {
-            id: req.user._id,
-            name: req.user.name,
-            email: req.user.email,
-            phone: req.user.phone,
-            address: req.user.address,
-            role: req.user.role,
-            status: req.user.status,
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            address: user.address,
+            role: user.role,
+            status: user.status,
             profileImage: profileImageUrl
         };
 
@@ -255,17 +264,11 @@ exports.updateProfile = async (req, res) => {
             });
         }
 
-        if (!req.body) {
-            return res.status(400).json({
-                success: false,
-                message: "Request body is required",
-                data: null,
-            });
-        }
+        let { name, email, phone, profileImage, address } = req.body || {};
+
 
         //ate name if provided
-        if (req.body.name) {
-            let name = req.body.name.toString().trim();
+        if (name) {
             if (name.length < 4) {
                 return res.status(400).json({
                     success: false,
@@ -277,8 +280,8 @@ exports.updateProfile = async (req, res) => {
         }
 
         //ate email if provided
-        if (req.body.email) {
-            let email = req.body.email.toString().trim().toLowerCase();
+        if (email) {
+            email = email.toString().trim().toLowerCase();
 
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
@@ -306,8 +309,8 @@ exports.updateProfile = async (req, res) => {
         }
 
         //ate phone if provided
-        if (req.body.phone) {
-            let phone = req.body.phone.toString().trim();
+        if (phone) {
+            phone = phone.toString().trim();
 
             const phoneRegex = /^[0-9]{10}$/;
             if (!phoneRegex.test(phone)) {
@@ -339,8 +342,8 @@ exports.updateProfile = async (req, res) => {
             user.profileImage = req.file.filename;
         }
 
-        if (req.body.address) {
-            user.address = req.body.address.trim();
+        if (address) {
+            user.address = address.trim();
         }
         await user.save();
 

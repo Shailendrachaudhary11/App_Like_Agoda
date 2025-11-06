@@ -15,6 +15,8 @@ const storage = multer.diskStorage({
     else if (file.fieldname === "guestHouseImage") folder = "uploads/guestHouseImage";
     else if (file.fieldname === "photos") folder = "uploads/rooms";
     else if (file.fieldname === "profileImage") folder = "uploads/profileImage";
+    else if (file.fieldname === "atollImage") folder = "uploads/atolls";
+    else if (file.fieldname === "promoImage") folder = "uploads/promoImage";
 
     const fullPath = path.join(rootDir, folder);
 
@@ -36,8 +38,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage,
-  fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter
 });
 
 module.exports = upload;

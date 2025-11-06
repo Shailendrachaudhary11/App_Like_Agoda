@@ -20,13 +20,13 @@ const notificationSchema = new mongoose.Schema(
     },
     title: { type: String, required: true },
     message: { type: String, required: true },
-    // type: {
-    //   type: String,
-    //   enum: ["booking", "payment", "system", "alert", "general"],
-    //   default: "general",
-    // },
+    type: {
+      type: String,
+      enum: ["booking", "payment", "system", "alert", "general"],
+      default: "general",
+    },
     isRead: { type: Boolean, default: false },
-   
+
   },
   { timestamps: true }
 );

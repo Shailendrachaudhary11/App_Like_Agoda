@@ -8,14 +8,14 @@ const upload = require("../middlewares/upload");
 const verifyToken = require("../middlewares/verifyTokenPassword")
 
 // register route
-router.post("/userAuth/register", upload.single('profileImage'), validateRequest, userController.register);
+router.post("/userAuth/register", upload.single('profileImage'), registerValidation, validateRequest, userController.register);
 
 // login
 router.post('/userAuth/login', userController.login);
 
 // profile
 router.post("/userAuth/profile", auth(["guesthouse", "customer"]), userController.getMyProfile);
-router.put("/userAuth/profile", auth(["guesthouse", "customer"]), upload.single('profileImage'), userController.updateProfile);
+router.post("/userAuth/update-profile", auth(["guesthouse", "customer"]), upload.single('profileImage'), userController.updateProfile);
 router.post("/userAuth/change-password", auth(["guesthouse", "customer"]), userController.changePassword);
 router.post('/userAuth/forgot-password', userController.forgotPassword);
 router.post('/userAuth/verify-otp', verifyToken, userController.verifyOtp);

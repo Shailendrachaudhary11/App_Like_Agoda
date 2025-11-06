@@ -12,9 +12,9 @@ const cors = require("cors");
 const app = express();
 app.use(cors());
 
-
 // serve uploads folder
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/invoices", express.static(path.join(__dirname, "public/invoices")));
 
 // Connect to DB
 connectDB();
@@ -23,14 +23,14 @@ connectDB();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
-
 // Ensure upload directories exist
 ensureUploadDirs([
   "uploads/guestHouseImage",
   "uploads/profileImage",
   "uploads/adminImage",
-  "uploads/rooms"
+  "uploads/rooms",
+  "uploads/atolls",
+  "uploads/promoImage"
 ]);
 
 app.use('/api/adminAuth', adminRoutes);
@@ -40,8 +40,10 @@ app.use('/api', customerRoutes);
 
 // Start server
 const PORT = process.env.PORT || 5050;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Server running on all network interfaces");
 });
+
+
 
 

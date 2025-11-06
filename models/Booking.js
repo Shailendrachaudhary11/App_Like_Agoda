@@ -25,12 +25,11 @@ const bookingSchema = new mongoose.Schema({
 
   finalAmount: { type: Number, required: true },
 
-  promoCode: { type: String, default: null },
+  promoCode: { type: String },
 
   status: {
     type: String,
     enum: [
-      'pending',      // Customer booked
       'confirmed',    // after payment done 
       'cancelled',    // Cancelled by customer or guesthouse
       'completed',
@@ -40,9 +39,6 @@ const bookingSchema = new mongoose.Schema({
 
   reason: { type: String },
 
-
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Booking', bookingSchema);

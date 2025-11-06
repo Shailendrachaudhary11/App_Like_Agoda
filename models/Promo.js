@@ -6,8 +6,12 @@ const promoSchema = new mongoose.Schema({
     discountValue: { type: Number, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
-    maxUsage: { type: Number, default: null }, // null = unlimited
-    isActive: { type: Boolean, default: true }
+    promoImage: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    status: { type: String, default: "active" }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Promo", promoSchema);
