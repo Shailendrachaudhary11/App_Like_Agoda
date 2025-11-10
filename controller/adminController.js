@@ -15,6 +15,9 @@ const Island = require("../models/Island");
 const Review = require("../models/review");
 const Payment = require("../models/Payment");
 const Atoll = require("../models/Atoll");
+const RoomCategory = require('../models/RoomCategory');
+const BedType = require('../models/BedType');
+const mongoose = require('mongoose');
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -208,12 +211,10 @@ exports.updateProfile = async (req, res) => {
     try {
         const adminId = req.user?.id;
 
-        // Validate request body
-        if (!req.body) {
-            return res.status(400).json({
+        if (!adminId) {
+            return res.status(401).json({
                 success: false,
-                message: "Request body is required",
-                data: null,
+                message: "Unauthorized: Admin ID missing from token.",
             });
         }
 
@@ -512,6 +513,9 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
+
+// ___________________________________________________
+
 exports.getDashboardData = async (req, res) => {
     try {
         // Count all required stats
@@ -540,6 +544,179 @@ exports.getDashboardData = async (req, res) => {
         return res.status(500).json({
             success: false, // should be boolean, not string
             message: "Error fetching dashboard data",
+            error: error.message
+        });
+    }
+};
+
+exports.getMonthlyReports = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.body;
+
+        let matchStage = {};
+        if (startDate && endDate) {
+            matchStage = {
+                createdAt: {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                }
+            };
+        }
+
+        const groupStage = startDate && endDate
+            ? {
+                $group: {
+                    _id: null,
+                    bookings: { $sum: 1 },
+                    cancellations: {
+                        $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
+                    },
+                    revenue: {
+                        $sum: {
+                            $cond: [
+                                { $in: ["$status", ["confirmed", "completed"]] },
+                                "$finalAmount",
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
+            : {
+                $group: {
+                    _id: { $month: "$createdAt" },
+                    bookings: { $sum: 1 },
+                    cancellations: {
+                        $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
+                    },
+                    revenue: {
+                        $sum: {
+                            $cond: [
+                                { $in: ["$status", ["confirmed", "completed"]] },
+                                "$finalAmount",
+                                0
+                            ]
+                        }
+                    }
+                }
+            };
+
+        const sortStage = startDate && endDate ? { "_id": 1 } : { "_id": 1 };
+
+        const reports = await Booking.aggregate([
+            { $match: matchStage },
+            groupStage,
+            { $sort: sortStage }
+        ]);
+
+        let formattedData;
+
+        if (startDate && endDate) {
+            // Single summary result
+            const result = reports[0] || { bookings: 0, cancellations: 0, revenue: 0 };
+            return res.status(200).json({
+                success: true,
+                message: `Report from ${startDate} to ${endDate}`,
+                data: result
+            });
+        } else {
+            // Monthly data
+            const months = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+            ];
+            formattedData = months.map((month, index) => {
+                const found = reports.find(r => r._id === index + 1);
+                return {
+                    month,
+                    bookings: found ? found.bookings : 0,
+                    cancellations: found ? found.cancellations : 0,
+                    revenue: found ? found.revenue : 0
+                };
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: startDate && endDate
+                ? "Successfully fetched daily data"
+                : "Successfully fetched monthly data",
+            data: formattedData
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getRevenueDistribution = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.body; // frontend se aa rahe hain (optional)
+
+        let matchStage = {}; // default: saare bookings
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+
+            // validation
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid startDate or endDate format"
+                });
+            }
+
+            if (end < start) {
+                return res.status(400).json({
+                    success: false,
+                    message: "endDate must be greater than or equal to startDate"
+                });
+            }
+
+            // filter bookings by date range
+            matchStage = {
+                createdAt: { $gte: start, $lte: end }
+            };
+        }
+
+        // aggregation pipeline
+        const result = await Booking.aggregate([
+            { $match: matchStage },
+            {
+                $group: {
+                    _id: null,
+                    bookings: { $sum: 1 },
+                    cancellations: {
+                        $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
+                    },
+                    revenue: {
+                        $sum: {
+                            $cond: [
+                                { $in: ["$status", ["confirmed", "completed"]] },
+                                "$finalAmount",
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        const data = result[0] || { bookings: 0, cancellations: 0, revenue: 0 };
+
+        return res.status(200).json({
+            success: true,
+            message: startDate && endDate
+                ? `Revenue distribution from ${startDate} to ${endDate}`
+                : "Revenue distribution data (all time)",
+            data
+        });
+
+    } catch (error) {
+        console.error("Error in getRevenueDistribution:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching booking distribution",
             error: error.message
         });
     }
@@ -758,6 +935,7 @@ exports.deleteOwner = async (req, res) => {
             success: true,
             message: "Guesthouse owner deleted successfully.",
         });
+
     } catch (error) {
         console.error("Delete Owner Error:", error);
         return res.status(500).json({
@@ -1760,8 +1938,16 @@ exports.getAllBooking = async (req, res) => {
                 path: "guesthouse",
                 select: "name address guestHouseImage",
             })
-            .select("-__v -updatedAt")
-            .lean();
+            .select("-__v -updatedAt");
+
+        // Auto-update confirmed bookings to 'completed' if checkOut < today
+        const today = new Date();
+        for (let booking of bookings) {
+            if (booking.status === "confirmed" && new Date(booking.checkOut) < today) {
+                booking.status = "completed";
+                await booking.save();
+            }
+        }
 
         bookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -2294,41 +2480,55 @@ exports.getAllPromo = async (req, res) => {
     }
 };
 
-
 exports.createPromo = async (req, res) => {
     try {
         const { code, discountType, discountValue, startDate, endDate } = req.body;
 
-        if (!code || !discountType || !discountValue || !startDate || !endDate) {
+        //  Required fields check
+        if (!code || !discountType || discountValue === undefined || !startDate || !endDate) {
             return res.status(400).json({
                 success: false,
                 message: "All fields (code, discountType, discountValue, startDate, endDate) are required",
             });
         }
 
-        if (!req.file) {
+        //  Validate code
+        if (typeof code !== 'string' || code.trim().length < 3) {
             return res.status(400).json({
                 success: false,
-                message: "Promo-Image is requied",
+                message: "code must be a string and at least 3 characters long",
             });
         }
+        const trimmedCode = code.trim().toUpperCase();
 
-        if (!["flat", "percentage"].includes(discountType.toLowerCase())) {
+        //  Validate discountType
+        const validTypes = ["flat", "percentage"];
+        if (typeof discountType !== 'string' || !validTypes.includes(discountType.toLowerCase())) {
             return res.status(400).json({
                 success: false,
                 message: "discountType must be either 'flat' or 'percentage'",
             });
         }
+        const normalizedType = discountType.toLowerCase();
 
-        if (isNaN(discountValue) || discountValue <= 0) {
+        //  Validate discountValue
+        const numericValue = Number(discountValue);
+        if (isNaN(numericValue) || numericValue <= 0) {
             return res.status(400).json({
                 success: false,
                 message: "discountValue must be a positive number",
             });
         }
 
+        // Validate startDate & endDate format & logic
         const start = new Date(startDate);
         const end = new Date(endDate);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return res.status(400).json({
+                success: false,
+                message: "startDate and endDate must be valid dates",
+            });
+        }
         if (end <= start) {
             return res.status(400).json({
                 success: false,
@@ -2336,7 +2536,17 @@ exports.createPromo = async (req, res) => {
             });
         }
 
-        const existingPromo = await Promo.findOne({ code });
+        //  Validate file upload
+        if (!req.file || !req.file.filename) {
+            return res.status(400).json({
+                success: false,
+                message: "Promo image is required",
+            });
+        }
+        const promoImageFilename = req.file.filename;
+
+        //  Check for existing promo code (duplicate)
+        const existingPromo = await Promo.findOne({ code: trimmedCode });
         if (existingPromo) {
             return res.status(400).json({
                 success: false,
@@ -2344,13 +2554,14 @@ exports.createPromo = async (req, res) => {
             });
         }
 
+        //  Create promo
         const promo = new Promo({
-            code: code.trim().toUpperCase(),
-            discountType,
-            discountValue,
+            code: trimmedCode,
+            discountType: normalizedType,
+            discountValue: numericValue,
             startDate: start,
             endDate: end,
-            promoImage: req.file ? req.file.filename : null,
+            promoImage: promoImageFilename,
         });
 
         await promo.save();
@@ -2360,8 +2571,18 @@ exports.createPromo = async (req, res) => {
             message: "Promo created successfully",
             data: promo,
         });
+
     } catch (err) {
         console.error("[Promo] createPromo error:", err);
+
+        // Handle duplicate key error (E11000)
+        if (err.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: "Promo code already exists. Please use a different code.",
+            });
+        }
+
         return res.status(500).json({
             success: false,
             message: "Internal server error while creating promo",
@@ -2369,6 +2590,7 @@ exports.createPromo = async (req, res) => {
         });
     }
 };
+
 
 
 exports.getPromoById = async (req, res) => {
@@ -2410,7 +2632,6 @@ exports.getPromoById = async (req, res) => {
         });
     }
 };
-
 
 exports.updatePromo = async (req, res) => {
     try {
@@ -2495,7 +2716,6 @@ exports.updatePromo = async (req, res) => {
         });
     }
 };
-
 
 exports.deletePromo = async (req, res) => {
     try {
@@ -2647,7 +2867,6 @@ exports.deleteNotification = async (req, res) => {
         const { notificationId } = req.body;
         const adminId = req.user.id;
 
-        //  Await जरूरी है
         const notification = await Notification.findOne({
             _id: notificationId,
             "receiver.userId": adminId,
@@ -2750,10 +2969,19 @@ exports.getAllAtolls = async (req, res) => {
 exports.createAtoll = async (req, res) => {
     try {
         const { name } = req.body;
-        if (!name) {
+
+        if (!name || name.trim() === "") {
             return res.status(400).json({
                 success: false,
-                message: "Name field is required"
+                message: "Name field is required",
+            });
+        }
+
+        const nameRegex = /^[A-Za-z\s]+$/;
+        if (!nameRegex.test(name.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: "Name should contain only letters (A–Z, a–z).",
             });
         }
 
@@ -2764,15 +2992,16 @@ exports.createAtoll = async (req, res) => {
             });
         }
 
-        const existing = await Atoll.findOne({ name });
+        const existing = await Atoll.findOne({
+            name: { $regex: new RegExp(`^${name.trim()}$`, "i") } // "i" = case-insensitive
+        });
 
         if (existing) {
             return res.status(400).json({
                 success: false,
-                message: "Atoll with this name already exists"
+                message: "Atoll with this name already exists",
             });
         }
-
         const atoll = new Atoll({
             name: name.trim(),
             atollImage: `${req.file.filename}` // store relative path
@@ -2884,11 +3113,42 @@ exports.editAtoll = async (req, res) => {
     try {
         const { atollId, name } = req.body;
 
+        // Validation: atollId required
         if (!atollId) {
             return res.status(400).json({
                 success: false,
                 message: "Atoll-ID is required",
             });
+        }
+        if (!mongoose.Types.ObjectId.isValid(atollId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Atoll-ID is not a valid ID",
+            });
+        }
+
+        // If name provided, validate it
+        if (name !== undefined) {
+            if (typeof name !== "string") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name must be a string",
+                });
+            }
+            const trimmedName = name.trim();
+            if (trimmedName.length < 3) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name must be at least 3 characters",
+                });
+            }
+
+            if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name must contain only letters.",
+                });
+            }
         }
 
         const atoll = await Atoll.findById(atollId);
@@ -2899,16 +3159,16 @@ exports.editAtoll = async (req, res) => {
             });
         }
 
+        // Update fields
         if (name) {
-            atoll.name = name;
+            atoll.name = name.trim();
         }
-
         if (req.file) {
+            // Optional: you could validate file type/extensions
             atoll.atollImage = req.file.filename;
         }
 
-        const updatedAtoll = await atoll.save({ validateBeforeSave: false });
-
+        const updatedAtoll = await atoll.save();
 
         return res.status(200).json({
             success: true,
@@ -2918,6 +3178,17 @@ exports.editAtoll = async (req, res) => {
 
     } catch (error) {
         console.error("Error while editing atoll:", error);
+
+        // If duplicate key error (unique) from mongoose-unique-validator
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: messages
+            });
+        }
+
         res.status(500).json({
             success: false,
             message: "Error while editing atoll",
@@ -2926,6 +3197,7 @@ exports.editAtoll = async (req, res) => {
     }
 };
 
+//______________________
 
 exports.getAllIslands = async (req, res) => {
     try {
@@ -2973,34 +3245,64 @@ exports.createIslands = async (req, res) => {
     try {
         const { name, atollId } = req.body;
 
-        // Validate input
+        // 1. Validate input presence
         if (!name || !atollId) {
             return res.status(400).json({
                 success: false,
-                message: "name and atollId are required."
+                message: "Both name and atollId are required."
             });
         }
 
+        // 2. Validate types & formats
+        if (typeof name !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: "Name must be a string."
+            });
+        }
+        const trimmedName = name.trim();
+        if (trimmedName.length < 3) {
+            return res.status(400).json({
+                success: false,
+                message: "Name must be at least 3 characters long."
+            });
+        }
+        // Regex: only letters A-Z/a-z, no spaces, numbers or special chars
+        if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Name must contain only letters."
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(atollId)) {
+            return res.status(400).json({
+                success: false,
+                message: "atollId is not a valid identifier."
+            });
+        }
+
+        // 3. Check if atoll exists
         const atoll = await Atoll.findById(atollId);
         if (!atoll) {
             return res.status(404).json({
                 success: false,
-                message: "No atoll found"
-            })
-        }
-
-        // Check for existing island
-        const existingIsland = await Island.findOne({ name });
-        if (existingIsland) {
-            return res.status(400).json({
-                success: false,
-                message: "Island already exists."
+                message: "No Atoll found with the given atollId."
             });
         }
 
-        // Create new island
+        // 4. Check for duplicate island name under same or globally (depending on requirement)
+        const existingIsland = await Island.findOne({ name: trimmedName });
+        if (existingIsland) {
+            return res.status(400).json({
+                success: false,
+                message: "Island with this name already exists."
+            });
+        }
+
+        // 5. Create new island
         const newIsland = new Island({
-            name,
+            name: trimmedName,
             atoll: atollId,
             createdAt: new Date()
         });
@@ -3014,6 +3316,17 @@ exports.createIslands = async (req, res) => {
         });
     } catch (err) {
         console.error("[Island] createIsland error:", err);
+
+        // Handle mongoose validation errors if any
+        if (err.name === 'ValidationError') {
+            const errors = Object.values(err.errors).map(e => e.message);
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed.",
+                errors
+            });
+        }
+
         return res.status(500).json({
             success: false,
             message: "An error occurred while adding the island.",
@@ -3021,6 +3334,7 @@ exports.createIslands = async (req, res) => {
         });
     }
 };
+
 
 exports.activeInActiveIsland = async (req, res) => {
     try {
@@ -3104,6 +3418,7 @@ exports.editIsland = async (req, res) => {
     try {
         const { islandId, name } = req.body;
 
+        // 🔹 Island ID required
         if (!islandId) {
             return res.status(400).json({
                 success: false,
@@ -3118,9 +3433,31 @@ exports.editIsland = async (req, res) => {
                 message: "Island not found",
             });
         }
-        if (name) {
-            island.name = name;
+
+        // 🔹 Name validation (letters only, optional)
+        if (name && name.trim() !== "") {
+            const nameRegex = /^[A-Za-z\s]+$/; // letters and spaces only
+            if (!nameRegex.test(name.trim())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name should contain only letters (A–Z, a–z).",
+                });
+            }
         }
+
+        const existingIsland = await Island.findOne({
+            _id: { $ne: islandId },
+            name: { $regex: new RegExp(`^${name.trim()}$`, "i") }
+        });
+
+        if (existingIsland) {
+            return res.status(400).json({
+                success: false,
+                message: "Island with this name already exists.",
+            });
+        }
+
+        island.name = name.trim();
 
         const updatedIsland = await island.save();
 
@@ -3140,22 +3477,161 @@ exports.editIsland = async (req, res) => {
     }
 };
 
+//________________________ FACILITY___________________
+
+exports.updateFacility = async (req, res) => {
+    try {
+        const { facilityId, name } = req.body;
+
+        // 1. Validate facilityId
+        if (!facilityId || !mongoose.Types.ObjectId.isValid(facilityId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid facilityId is required"
+            });
+        }
+
+        // 2. Find existing facility
+        const facility = await Facility.findById(facilityId);
+        if (!facility) {
+            return res.status(404).json({
+                success: false,
+                message: "Facility not found"
+            });
+        }
+
+        // 3. If name provided then validate it
+        if (name !== undefined) {
+            if (typeof name !== 'string' || name.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    message: "Facility name must be a non-empty string"
+                });
+            }
+            const normalized = name.trim();
+            if (normalized.length < 3) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Facility name must be at least 3 characters long"
+                });
+            }
+            if (!/^[A-Za-z\s]+$/.test(normalized)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Facility name must contain only letters and spaces"
+                });
+            }
+
+            // Duplicate check (ignore current facility)
+            const existing = await Facility.findOne({ name: normalized, _id: { $ne: facilityId } });
+            if (existing) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Another facility with this name already exists"
+                });
+            }
+
+            facility.name = normalized;
+        }
+
+        // 4. Update lastModified or similar if you have
+        facility.updatedAt = new Date();
+
+        const updated = await facility.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Facility updated successfully",
+            data: updated
+        });
+
+    } catch (err) {
+        console.error("[Facility] updateFacility error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while updating facility",
+            error: err.message
+        });
+    }
+};
+
+
+exports.activeInactiveFacility = async (req, res) => {
+    try {
+        const { facilityId } = req.body;
+
+        // 1. Validate facilityId
+        if (!facilityId || !mongoose.Types.ObjectId.isValid(facilityId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid facilityId is required"
+            });
+        }
+
+        //  Find facility
+        const facility = await Facility.findById(facilityId);
+        if (!facility) {
+            return res.status(404).json({
+                success: false,
+                message: "Facility not found"
+            });
+        }
+
+        if (facility === "active") {
+            facility = "inactive";
+        }
+        else {
+            facility = "active";
+        }
+
+        await facility.save();
+
+        return res.status(200).json({
+            success: true,
+            message: `Facility status has been changed to ${facility.status} successfully`,
+        });
+
+    } catch (err) {
+        console.error("[Facility] changeFacilityStatus error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error to update status of facility",
+            error: err.message
+        });
+    }
+};
+
 
 exports.createFacility = async (req, res) => {
     try {
         const { name } = req.body;
 
-        if (!name || name.trim() === '') {
+        // 1. Required check
+        if (!name || typeof name !== 'string' || name.trim() === '') {
             return res.status(400).json({
                 success: false,
-                message: "Facility name is required"
+                message: "Facility name is required and must be a string"
             });
         }
 
-        // Optionally normalize name (e.g. trim, lowercase first letter, etc.)
+        // 2. Normalise & length check
         const normalized = name.trim();
+        if (normalized.length < 3) {
+            return res.status(400).json({
+                success: false,
+                message: "Facility name must be at least 3 characters long"
+            });
+        }
 
-        // Check duplicate
+        // 3. Character check (only letters and spaces)
+        if (!/^[A-Za-z\s]+$/.test(normalized)) {
+            return res.status(400).json({
+                success: false,
+                message: "Facility name must contain only letters and spaces"
+            });
+        }
+
+        // 4. Duplicate check
         const existing = await Facility.findOne({ name: normalized });
         if (existing) {
             return res.status(400).json({
@@ -3164,17 +3640,20 @@ exports.createFacility = async (req, res) => {
             });
         }
 
+        // 5. Create and save
         const facility = new Facility({
-            name: normalized
-
+            name: normalized,
+            status: "active"
         });
 
         await facility.save();
 
         return res.status(201).json({
             success: true,
-            message: "Successfully add facility"
+            message: "Successfully added facility",
+            data: facility
         });
+
     } catch (err) {
         console.error("[Facility] createFacility error:", err);
         return res.status(500).json({
@@ -3184,6 +3663,7 @@ exports.createFacility = async (req, res) => {
         });
     }
 };
+
 exports.deleteFacility = async (req, res) => {
     try {
         const { facilityId } = req.body;
@@ -3223,6 +3703,544 @@ exports.deleteFacility = async (req, res) => {
         });
     }
 };
+
+
+//  Create Room Category
+exports.createRoomCategory = async (req, res) => {
+    try {
+        const { name, description } = req.body;
+
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ success: false, message: "Category name is required" });
+        }
+
+        const trimmedName = name.trim();
+
+        //  Validate name pattern (must start with a capital letter, min 3 chars)
+
+        const nameRegex = /^[A-Za-z\s]+$/;
+        if (!nameRegex.test(trimmedName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Name should contain only letters (A–Z, a–z).",
+            });
+        }
+        // const nameRegex = /^[A-Za-z\s]{3,}$/;
+        // if (!nameRegex.test(trimmedName)) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: "Name must start with a capital letter and be at least 3 characters long.",
+        //     });
+        // }
+
+        const existing = await RoomCategory.findOne({
+            name: { $regex: new RegExp(`^${trimmedName}$`, "i") },
+        });
+
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: "Room Category already exists.",
+            });
+        }
+
+        let finalDescription = "";
+        if (description) {
+            const descTrimmed = description.trim();
+            if (descTrimmed.length > 150) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Description must not exceed 150 characters.",
+                });
+            }
+            finalDescription = descTrimmed;
+        }
+
+        const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1);
+
+        //  Create category
+        const newCategory = await RoomCategory.create({
+            name: formattedName,
+            description: finalDescription,
+            status: "active",
+        });
+
+
+        res.status(201).json({
+            success: true,
+            message: "Room Category added successfully",
+            data: newCategory
+        });
+    } catch (error) {
+        console.error("[RoomCategory] create error:", error);
+        res.status(500).json({ success: false, message: "Server error while create adding room-category", error: error.message });
+    }
+};
+
+
+exports.getAllRoomCategories = async (req, res) => {
+    try {
+        const categories = await RoomCategory.find()
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (!categories || categories.length === 0) {
+            return res.status(404).json({
+                success: false,
+                count: 0,
+                message: "No room categories found.",
+                data: [],
+            });
+        }
+
+        const formattedCategories = categories.map(cat => ({
+            ...cat,
+            name:
+                cat.name && typeof cat.name === "string"
+                    ? cat.name.charAt(0).toUpperCase() + cat.name.slice(1)
+                    : cat.name,
+        }));
+
+        return res.status(200).json({
+            success: true,
+            count: formattedCategories.length,
+            message: "Fetched all room categories successfully.",
+            data: formattedCategories,
+        });
+
+    } catch (error) {
+        console.error("[GET_ALL_ROOM_CATEGORIES_ERROR]", error);
+        return res.status(500).json({
+            success: false,
+            message: "Server error while fetching room categories.",
+            error: error.message,
+        });
+    }
+};
+
+exports.updateRoomCategory = async (req, res) => {
+    try {
+        const { roomCatId, name, description, status } = req.body;
+
+        //  roomCatId required
+        if (!roomCatId) {
+            return res.status(400).json({
+                success: false,
+                message: "Room Category ID is required",
+            });
+        }
+
+        const roomCategory = await RoomCategory.findById(roomCatId);
+        if (!roomCategory) {
+            return res.status(404).json({
+                success: false,
+                message: "Room Category not found",
+            });
+        }
+
+        //  Name validation (letters only)
+        if (name && name.trim() !== "") {
+            const nameRegex = /^[A-Za-z\s]+$/;
+            if (!nameRegex.test(name.trim())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name should contain only letters (A–Z, a–z).",
+                });
+            }
+
+            //  Case-insensitive duplicate check (exclude current category)
+            const existing = await RoomCategory.findOne({
+                _id: { $ne: roomCatId },
+                name: { $regex: new RegExp(`^${name.trim()}$`, "i") }
+            });
+            if (existing) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Room Category with this name already exists.",
+                });
+            }
+
+            roomCategory.name = name.trim();
+        }
+
+        //  Description update (optional)
+        if (description && description.trim() !== "") {
+            roomCategory.description = description.trim();
+        }
+
+        //  Status validation (optional)
+        if (status && ["active", "inactive"].includes(status)) {
+            roomCategory.status = status;
+        }
+
+        const updated = await roomCategory.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Room Category updated successfully",
+            data: updated
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating room category",
+            error: error.message
+        });
+    }
+};
+
+exports.changeRoomCategoryStatus = async (req, res) => {
+    try {
+        const { roomCatId } = req.body;
+
+        const roomCat = await RoomCategory.findById(roomCatId);
+        if (!roomCat) {
+            return res.status(404).json({
+                success: false,
+                message: "Room Category not found"
+            });
+        }
+
+        if (roomCat.status === "active") {
+            roomCat.status = "inactive"
+        }
+        else {
+            roomCat.status = "active"
+        }
+
+        await roomCat.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Room Category status updated to ${roomCat.status}`
+        });
+
+    } catch (error) {
+        console.error("[RoomCategory] change status error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error updating status",
+            error: error.message
+        });
+    }
+};
+
+exports.deleteRoomCategory = async (req, res) => {
+    try {
+        const { roomCatId } = req.body;
+
+        const deleted = await RoomCategory.findByIdAndDelete(roomCatId);
+        if (!deleted) {
+            return res.status(404).json({ success: false, message: "Room Category not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Room Category deleted successfully"
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error deleting room category", error: error.message });
+    }
+};
+
+//__________________________________
+
+exports.addBedType = async (req, res) => {
+    try {
+        const { name } = req.body;
+
+        if (!name || typeof name !== "string" || !name.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type name is required and must be a non-empty string"
+            });
+        }
+
+        const nameRegex = /^[A-Za-z\s]{3,50}$/;
+        if (!nameRegex.test(name.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type name must contain only letters, min 3 characters long"
+            });
+        }
+
+        // Check for duplicate
+        const existing = await BedType.findOne({ name: { $regex: new RegExp(`^${name.trim()}$`, "i") } });
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type already exists"
+            });
+        }
+
+        const newBedType = await BedType.create({ name });
+        res.status(201).json({
+            success: true,
+            message: "Bed Type added successfully",
+            data: newBedType
+        });
+
+    } catch (error) {
+        console.error("Add Bed Type Error:", error);
+        res.status(500).json({ success: false, message: "Server Error while adding bedType" });
+    }
+};
+
+exports.getAllBedTypes = async (req, res) => {
+    try {
+        const bedTypes = await BedType.find().sort({ createdAt: -1 }).lean();
+
+        const formatted = bedTypes.map(bt => ({
+            ...bt,
+            name: bt.name.charAt(0).toUpperCase() + bt.name.slice(1).toLowerCase()
+        }));
+
+        res.status(200).json({
+            success: true,
+            message: "Fetched all Bed Types successfully",
+            data: formatted
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error while fetching all bedTypes" });
+    }
+};
+
+exports.editBedType = async (req, res) => {
+    try {
+        const { bedTypeId, name } = req.body;
+
+        // 🔹 bedTypeId required
+        if (!bedTypeId || bedTypeId.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type ID is required",
+            });
+        }
+
+        // 🔹 Name validation
+        if (!name || name.trim().length < 3) {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type name must be at least 3 characters long",
+            });
+        }
+
+        const formattedName = name.trim();
+
+        // 🔹 Letters-only check
+        const nameRegex = /^[A-Za-z\s]+$/;
+        if (!nameRegex.test(formattedName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type name should contain only letters (A–Z, a–z).",
+            });
+        }
+
+        // 🔹 Case-insensitive duplicate check (exclude current bedTypeId)
+        const existing = await BedType.findOne({
+            name: { $regex: new RegExp(`^${formattedName}$`, "i") },
+            _id: { $ne: bedTypeId }
+        });
+
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: "Bed Type name already exists",
+            });
+        }
+
+        // 🔹 Update
+        const updated = await BedType.findByIdAndUpdate(
+            bedTypeId,
+            { name: formattedName },
+            { new: true, runValidators: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Bed Type updated successfully",
+            data: updated
+        });
+
+    } catch (error) {
+        console.error("[BedType] edit error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error while editing Bed Type",
+            error: error.message
+        });
+    }
+};
+
+exports.changeStatus = async (req, res) => {
+    try {
+        const { bedTypeId } = req.body;
+
+        const bedType = await BedType.findById(bedTypeId);
+        if (!bedType) {
+            return res.status(404).json({ success: false, message: "Bed Type not found" });
+        }
+
+        bedType.status = bedType.status === "active" ? "inactive" : "active";
+        await bedType.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Bed Type status changed to ${bedType.status}`,
+            data: bedType
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error while changing status of bedType" });
+    }
+};
+
+exports.deleteBedType = async (req, res) => {
+    try {
+        const { bedTypeId } = req.body;
+
+        const deleted = await BedType.findByIdAndDelete(bedTypeId);
+        if (!deleted) {
+            return res.status(404).json({ success: false, message: "Bed Type not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Bed Type deleted successfully"
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error while deleting bedType" });
+    }
+};
+
+//__________________________ MANAGE PAYMENT
+
+exports.getAllPayments = async (req, res) => {
+    try {
+        const payments = await Payment.find()
+            .populate({
+                path: "booking",
+                populate: [
+                    { path: "customer", select: "name" },
+                    { path: "guesthouse", select: "name" }
+                ]
+            })
+            .sort({ createdAt: -1 }); // Latest first
+
+        return res.status(200).json({
+            success: true,
+            message: "Payment list fetched successfully",
+            data: payments.map(p => ({
+                _id: p._id,
+                guesthouse: p.booking?.guesthouse?.name || "N/A",
+                customer: p.booking?.customer?.name || "N/A",
+                amount: p.amount,
+                paymentMethod: p.paymentMethod,
+                paymentStatus: p.paymentStatus,
+                paymentDate: p.paymentDate,
+                checkIn: p.booking?.checkIn,
+                checkOut: p.booking?.checkOut,
+                nights: p.booking?.nights,
+            }))
+        });
+    } catch (error) {
+        console.error("Error fetching payments:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching payments",
+            error: error.message
+        });
+    }
+};
+
+exports.getPaymentDetails = async (req, res) => {
+    try {
+        const { paymentId } = req.body;
+
+        if (!paymentId || !mongoose.Types.ObjectId.isValid(paymentId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid paymentId is required"
+            });
+        }
+
+        const payment = await Payment.findById(paymentId)
+            .populate({
+                path: "booking",
+                populate: [
+                    { path: "customer", select: "name email phone address" },
+                    { path: "guesthouse", select: "name address contactNumber description price cleaningFee taxPercent" }
+                ]
+            });
+
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: "Payment not found"
+            });
+        }
+
+        // Construct separate sections
+        const booking = payment.booking;
+        const customer = booking.customer || {};
+        const guesthouse = booking.guesthouse || {};
+
+        return res.status(200).json({
+            success: true,
+            message: "Payment details fetched successfully",
+            data: {
+                payment: {
+                    _id: payment._id,
+                    amount: payment.amount,
+                    paymentMethod: payment.paymentMethod,
+                    paymentStatus: payment.paymentStatus,
+                    paymentDate: payment.paymentDate
+                },
+                booking: {
+                    _id: booking._id,
+                    checkIn: booking.checkIn,
+                    checkOut: booking.checkOut,
+                    nights: booking.nights,
+                    amount: booking.amount,
+                    cleaningFee: booking.cleaningFee,
+                    taxAmount: booking.taxAmount,
+                    discount: booking.discount,
+                    finalAmount: booking.finalAmount,
+                    reason: booking.reason,
+                    status: booking.status
+                },
+                customer: {
+                    _id: customer._id,
+                    name: customer.name,
+                    email: customer.email,
+                    phone: customer.phone,
+                    address: customer.address
+                },
+                guesthouse: {
+                    _id: guesthouse._id,
+                    name: guesthouse.name,
+                    address: guesthouse.address,
+                    contactNumber: guesthouse.contactNumber,
+                    description: guesthouse.description,
+                    price: guesthouse.price,
+                    cleaningFee: guesthouse.cleaningFee,
+                    taxPercent: guesthouse.taxPercent
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error while fetching payment details:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error while fetching payment details",
+            error: error.message
+        });
+    }
+};
+
+
+
 
 
 

@@ -14,6 +14,8 @@ const Admin = require("../models/adminUser");
 const PDFDocument = require("pdfkit");
 const path = require("path");
 const fs = require("fs");
+const Atoll = require("../models/Atoll");
+const Island = require("../models/Island");
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -38,6 +40,80 @@ exports.manageGuestHouse = async (req, res) => {
         } = req.body;
 
         console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
+
+        if (!name || name.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Guesthouse name is required"
+            });
+        }
+
+        if (!address || address.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Address is required"
+            });
+        }
+
+        if (!contactNumber || contactNumber.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Contact number is required"
+            });
+        }
+
+        if (!islands || islands.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "islands is required"
+            });
+        }
+
+        if (!atolls || atolls.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "atolls is required"
+            });
+        }
+
+        const atoll = await Atoll.findById(atolls);
+        if (!atoll) {
+            return res.status(404).json({ success: false, message: "Atoll not found" });
+        }
+
+        const island = await Island.find({ atoll: atolls, _id: islands });
+        if (island.length === 0) {
+            return res.status(404).json({ success: false, message: "No islands found for this atoll" });
+        }
+
+        // Only digits and length 7–15
+        if (!/^\d{7,15}$/.test(contactNumber)) {
+            return res.status(400).json({
+                success: false,
+                message: "Contact number must contain 7-15 digits"
+            });
+        }
+
+        if (!price || isNaN(price) || price <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid price is required"
+            });
+        }
+
+        if (taxPercent != null && (isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100)) {
+            return res.status(400).json({
+                success: false,
+                message: "Tax percent must be between 0 and 100"
+            });
+        }
+
+        if (cleaningFee != null && (isNaN(cleaningFee) || cleaningFee < 0)) {
+            return res.status(400).json({
+                success: false,
+                message: "Cleaning fee must be a positive number"
+            });
+        }
 
         // Validate images
         if (!req.files || req.files.length === 0) {
@@ -162,18 +238,18 @@ exports.manageGuestHouse = async (req, res) => {
 
             await guesthouse.save();
 
-            const masterAdmin = await Admin.findOne({ role: "admin" });
-            if (masterAdmin) {
-                await createNotification(
-                    { userId: ownerId, role: "guesthouse" },
-                    { userId: masterAdmin._id, role: "admin" },
-                    "Guesthouse updated",
-                    `Guesthouse "${guesthouse.name}" has updated by its owner.`,
-                    "system",
-                );
-            } else {
-                console.warn("[NOTIFICATION] No master admin found.");
-            }
+            // const masterAdmin = await Admin.findOne({ role: "admin" });
+            // if (masterAdmin) {
+            //     await createNotification(
+            //         { userId: ownerId, role: "guesthouse" },
+            //         { userId: masterAdmin._id, role: "admin" },
+            //         "Guesthouse updated",
+            //         `Guesthouse "${guesthouse.name}" has updated by its owner.`,
+            //         "system",
+            //     );
+            // } else {
+            //     console.warn("[NOTIFICATION] No master admin found.");
+            // }
 
             return res.status(200).json({
                 success: true,
@@ -218,20 +294,20 @@ exports.manageGuestHouse = async (req, res) => {
 
             await gh.save();
 
-            const masterAdmin = await Admin.findOne({ role: "admin" });
-            if (masterAdmin) {
-                await createNotification(
-                    { userId: ownerId, role: "guesthouse" },
-                    { userId: masterAdmin._id, role: "admin" },
-                    "New Guesthouse Added",
-                    `New guesthouse "${gh.name}" has been added.`,
-                    "system",
-                );
-                console.log(`[NOTIFICATION] Sent: New guesthouse "${gh.name}" added notification to admin.`);
-            }
-            else {
-                console.warn("[NOTIFICATION] No master admin found.");
-            }
+            // const masterAdmin = await Admin.findOne({ role: "admin" });
+            // if (masterAdmin) {
+            //     await createNotification(
+            //         { userId: ownerId, role: "guesthouse" },
+            //         { userId: masterAdmin._id, role: "admin" },
+            //         "New Guesthouse Added",
+            //         `New guesthouse "${gh.name}" has been added.`,
+            //         "system",
+            //     );
+            //     console.log(`[NOTIFICATION] Sent: New guesthouse "${gh.name}" added notification to admin.`);
+            // }
+            // else {
+            //     console.warn("[NOTIFICATION] No master admin found.");
+            // }
 
             return res.status(201).json({
                 success: true,
@@ -351,16 +427,44 @@ exports.addRoom = async (req, res) => {
 
         // Required field validation
         if (
-            !roomCategory ||
-            !bedType ||
-            !capacity ||
-            !description ||
-            !facilities ||
-            !pricePerNight
+            !roomCategory || roomCategory.trim() === "" ||
+            !bedType || bedType.trim() === "" ||
+            !capacity || capacity === "" ||
+            !description || description.trim() === "" ||
+            !facilities || facilities.length === 0 ||
+            !pricePerNight || pricePerNight === ""
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Please provide all required fields.",
+                message: "Please provide all required fields with valid values.",
+            });
+        }
+
+        if (isNaN(capacity) || capacity <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Capacity must be a valid positive number.",
+            });
+        }
+
+        if (isNaN(pricePerNight) || pricePerNight <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Price per night must be a valid positive number.",
+            });
+        }
+
+        if (priceWeekly && (isNaN(priceWeekly) || priceWeekly < 0)) {
+            return res.status(400).json({
+                success: false,
+                message: "Weekly price must be a valid number.",
+            });
+        }
+
+        if (priceMonthly && (isNaN(priceMonthly) || priceMonthly < 0)) {
+            return res.status(400).json({
+                success: false,
+                message: "Monthly price must be a valid number.",
             });
         }
 
@@ -381,19 +485,26 @@ exports.addRoom = async (req, res) => {
 
         //  Parse facilities (should be ObjectIds array)
         let facilitiesArray = [];
-
         try {
             if (typeof facilities === "string") {
-                // Try to parse JSON string array
                 const parsed = JSON.parse(facilities);
-                facilitiesArray = Array.isArray(parsed) ? parsed : facilities.split(",").map(f => f.trim());
+                facilitiesArray = Array.isArray(parsed)
+                    ? parsed
+                    : facilities.split(",").map(f => f.trim()).filter(f => f !== "");
             } else if (Array.isArray(facilities)) {
-                facilitiesArray = facilities;
+                facilitiesArray = facilities.filter(f => f !== "");
             }
         } catch (err) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid facilities format. Must be an array of ObjectIds.",
+                message: "Invalid facilities format. Must be an array of ObjectIds or strings.",
+            });
+        }
+
+        if (!Array.isArray(facilitiesArray) || facilitiesArray.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one facility is required.",
             });
         }
 
@@ -411,50 +522,45 @@ exports.addRoom = async (req, res) => {
         //  Handle and format availability dates
         let formattedAvailability = [];
 
-        if (availability) {
-            try {
-                const parsedAvailability =
-                    typeof availability === "string"
-                        ? JSON.parse(availability)
-                        : availability;
-
-                if (!Array.isArray(parsedAvailability) || parsedAvailability.length === 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Availability must be a non-empty array of dates.",
-                    });
-                }
-
-                // Auto-set isAvailable = true for all given dates
-                formattedAvailability = parsedAvailability.map((slot) => {
-                    const dateValue =
-                        typeof slot === "string"
-                            ? new Date(slot)
-                            : new Date(slot.date || slot);
-                    if (isNaN(dateValue)) {
-                        throw new Error("Invalid date format in availability array");
-                    }
-                    return { date: dateValue, isAvailable: true };
-                });
-            } catch (err) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Invalid availability format. Must be an array of valid dates (YYYY-MM-DD).",
-                });
-            }
-        } else {
+        if (!availability || availability.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: "Please provide availability dates for the room.",
             });
         }
 
+        try {
+            const parsedAvailability =
+                typeof availability === "string" ? JSON.parse(availability) : availability;
+
+            if (!Array.isArray(parsedAvailability) || parsedAvailability.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Availability must be a non-empty array of dates.",
+                });
+            }
+            formattedAvailability = parsedAvailability.map((slot) => {
+                const dateValue =
+                    typeof slot === "string"
+                        ? new Date(slot)
+                        : new Date(slot.date || slot);
+                if (isNaN(dateValue)) {
+                    throw new Error("Invalid date format in availability array");
+                }
+                return { date: dateValue, isAvailable: true };
+            });
+        } catch (err) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid availability format. Must be an array of valid dates (YYYY-MM-DD).",
+            });
+        }
+
         //  Create new Room document
         const newRoom = new Room({
             guesthouse: guesthouseId,
-            roomCategory,
-            bedType,
+            roomCategory: roomCategory.trim(),
+            bedType: bedType.trim(),
             capacity,
             description: description.trim(),
             facilities: facilitiesArray,
@@ -465,34 +571,31 @@ exports.addRoom = async (req, res) => {
             active: "active",
             availability: formattedAvailability,
         });
-
         await newRoom.save();
 
-        //  Construct photo URLs for frontend
-        const photosWithUrl = photos.map(
-            (name) => `${BASE_URL}/uploads/rooms/${name}`
-        );
+        // //  Construct photo URLs for frontend
+        // const photosWithUrl = photos.map(
+        //     (name) => `${BASE_URL}/uploads/rooms/${name}`
+        // );
 
-        const masterAdmin = await Admin.findOne({ role: "admin" });
-        if (masterAdmin) {
-            await createNotification(
-                { userId: ownerId, role: "guesthouse" },
-                { userId: masterAdmin._id, role: "admin" },
-                "New room added",
-                `Room added by "${guesthouse.name}".`,
-                "system",
-            );
-        } else {
-            console.warn("[NOTIFICATION] No master admin found.");
-        }
-
+        // const masterAdmin = await Admin.findOne({ role: "admin" });
+        // if (masterAdmin) {
+        //     await createNotification(
+        //         { userId: ownerId, role: "guesthouse" },
+        //         { userId: masterAdmin._id, role: "admin" },
+        //         "New room added",
+        //         `Room added by "${guesthouse.name}".`,
+        //         "system"
+        //     );
+        // }
 
         //  Success response
         return res.status(201).json({
             success: true,
             message: "Room added successfully with availability.",
-            roomId: newRoom._id
+            roomId: newRoom._id,
         });
+
     } catch (err) {
         console.error("[ROOM] Add error:", err);
         return res.status(500).json({
@@ -664,7 +767,7 @@ exports.updateRoom = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: "roomId not found"
-            })
+            });
         }
 
         // Find room by ID
@@ -688,57 +791,49 @@ exports.updateRoom = async (req, res) => {
             availability,
         } = req.body;
 
-        // Update fields if provided
-        if (roomCategory) room.roomCategory = roomCategory;
-        if (bedType) room.bedType = bedType;
-        if (capacity) room.capacity = capacity;
-        if (description) room.description = description;
-        if (pricePerNight) room.pricePerNight = pricePerNight;
-        if (priceWeekly) room.priceWeekly = priceWeekly;
-        if (priceMonthly) room.priceMonthly = priceMonthly;
+        // ✅ Simple validation: update only if not empty
+        if (roomCategory && roomCategory.trim() !== "") room.roomCategory = roomCategory;
+        if (bedType && bedType.trim() !== "") room.bedType = bedType;
+        if (capacity && capacity !== "") room.capacity = capacity;
+        if (description && description.trim() !== "") room.description = description;
+        if (pricePerNight && pricePerNight !== "") room.pricePerNight = pricePerNight;
+        if (priceWeekly && priceWeekly !== "") room.priceWeekly = priceWeekly;
+        if (priceMonthly && priceMonthly !== "") room.priceMonthly = priceMonthly;
 
-        if (facilities) {
+        // ✅ Facilities (only update if valid non-empty array)
+        if (facilities && facilities.length > 0) {
             if (typeof facilities === "string") {
                 try {
                     const parsedFacilities = JSON.parse(facilities);
-                    room.facilities = Array.isArray(parsedFacilities) ? parsedFacilities : [parsedFacilities];
+                    if (Array.isArray(parsedFacilities) && parsedFacilities.length > 0) {
+                        room.facilities = parsedFacilities;
+                    }
                 } catch (e) {
                     console.error("Invalid facilities format:", e.message);
-                    room.facilities = [];
                 }
-            } else {
+            } else if (Array.isArray(facilities) && facilities.length > 0) {
                 room.facilities = facilities;
             }
         }
 
-
-        let formattedAvailability = [];
-
-        if (availability) {
+        // ✅ Availability (update only if not empty)
+        if (availability && availability.length > 0) {
             try {
                 const parsedAvailability =
                     typeof availability === "string"
                         ? JSON.parse(availability)
                         : availability;
 
-                if (!Array.isArray(parsedAvailability) || parsedAvailability.length === 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Availability must be a non-empty array of dates.",
+                if (Array.isArray(parsedAvailability) && parsedAvailability.length > 0) {
+                    const formattedAvailability = parsedAvailability.map((slot) => {
+                        const dateValue =
+                            typeof slot === "string"
+                                ? new Date(slot)
+                                : new Date(slot.date || slot);
+                        return { date: dateValue, isAvailable: true };
                     });
+                    room.availability = formattedAvailability;
                 }
-
-                // Auto-set isAvailable = true for all given dates
-                formattedAvailability = parsedAvailability.map((slot) => {
-                    const dateValue =
-                        typeof slot === "string"
-                            ? new Date(slot)
-                            : new Date(slot.date || slot);
-                    if (isNaN(dateValue)) {
-                        throw new Error("Invalid date format in availability array");
-                    }
-                    return { date: dateValue, isAvailable: true };
-                });
             } catch (err) {
                 return res.status(400).json({
                     success: false,
@@ -748,18 +843,12 @@ exports.updateRoom = async (req, res) => {
             }
         }
 
-        room.availability = formattedAvailability;
-
-        // Handle new images (replace old completely)
+        // ✅ Handle new images (replace only if uploaded)
         if (req.files && req.files.length > 0) {
-            room.photos = req.files.map(file => file.filename); // only filenames in DB
+            room.photos = req.files.map(file => file.filename);
         }
 
         await room.save();
-
-        // Convert photos to full URLs for frontend
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-        const photosWithUrl = room.photos.map(name => `${BASE_URL}/uploads/rooms/${name}`);
 
         res.status(200).json({
             success: true,
@@ -776,6 +865,7 @@ exports.updateRoom = async (req, res) => {
         });
     }
 };
+
 
 exports.activeInActive = async (req, res) => {
     try {
@@ -916,7 +1006,10 @@ exports.getAllBookings = async (req, res) => {
             })
             .populate({
                 path: "room",
-                select: "roomCategory", // ya koi aur fields
+                populate: {
+                    path: "roomCategory",
+                    select: "name"
+                }
             });
 
 
@@ -941,18 +1034,19 @@ exports.getAllBookings = async (req, res) => {
                 let statusFormatted = booking.status
                     ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1)
                     : "Pending";
-
                 let roomCategories = [];
 
-                //  If multiple room IDs are present
+                // If multiple room IDs are present
                 if (Array.isArray(booking.room)) {
-                    const rooms = await Room.find({ _id: { $in: booking.room } }).select("roomCategory");
-                    roomCategories = rooms.map(r => r.roomCategory);
+                    const rooms = await Room.find({ _id: { $in: booking.room } })
+                        .populate({ path: "roomCategory", select: "name" }); // populate name only
+                    roomCategories = rooms.map(r => r.roomCategory?.name).filter(Boolean);
                 }
-                //  If single room ID
+                // If single room ID
                 else if (booking.room) {
-                    const room = await Room.findById(booking.room).select("roomCategory");
-                    if (room) roomCategories.push(room.roomCategory);
+                    const room = await Room.findById(booking.room)
+                        .populate({ path: "roomCategory", select: "name" });
+                    if (room && room.roomCategory) roomCategories.push(room.roomCategory.name);
                 }
 
                 const room = await Room.findById(booking.room);

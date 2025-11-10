@@ -2299,12 +2299,17 @@ exports.getAllAtolls = async (req, res) => {
 
 exports.getAllfacilities = async (req, res) => {
     try {
-        const facilities = await Facility.find({}, { _id: 1, name: 1 }).lean().sort({ createdAt: -1 });
+        const facilities = await Facility.find(
+            { status: "active" },
+            { _id: 1, name: 1, status: 1 }
+        )
+            .sort({ createdAt: -1 })
+            .lean();
 
         const modifiedAtolls = facilities.map(facilitie => ({
             id: facilitie._id,
             name: facilitie.name,
-
+            status: facilitie.status
         }));
 
         res.status(200).json({

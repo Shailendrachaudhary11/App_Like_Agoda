@@ -78,23 +78,24 @@ exports.register = async (req, res) => {
         await newUser.save();
 
         // Notify admin if guesthouse
-        if (userRole === "guesthouse") {
-            const masterAdmin = await Admin.findOne({ role: "admin" });
-            if (masterAdmin) {
-                await createNotification(
-                    { userId: newUser._id, role: "guesthouse" },
-                    { userId: masterAdmin._id, role: "admin" },
-                    "New Guesthouse Registration",
-                    `Guesthouse "${newUser.name}" has registered and is waiting for approval.`,
-                    "system",
-                    { guesthouseId: newUser._id }
-                );
-            } else {
-                console.warn("[NOTIFICATION] No master admin found.");
-            }
-        }
+        // if (userRole === "guesthouse") {
+        //     const masterAdmin = await Admin.findOne({ role: "admin" });
+        //     if (masterAdmin) {
+        //         await createNotification(
+        //             { userId: newUser._id, role: "guesthouse" },
+        //             { userId: masterAdmin._id, role: "admin" },
+        //             "New Guesthouse Registration",
+        //             `Guesthouse "${newUser.name}" has registered and is waiting for approval.`,
+        //             "system",
+        //             { guesthouseId: newUser._id }
+        //         );
+        //     } else {
+        //         console.warn("[NOTIFICATION] No master admin found.");
+        //     }
+        // }
 
         // Return response
+
         return res.status(201).json({
             success: true,
             message: userRole === "customer"

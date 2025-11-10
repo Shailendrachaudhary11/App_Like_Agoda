@@ -21,6 +21,8 @@ router.post("/reset-password", verifyToken, adminController.resetPassword);
 
 // ============== Dashboard ===================
 router.post("/dashboard", auth(["admin"]), adminController.getDashboardData);
+router.post("/report", auth(["admin"]), adminController.getMonthlyReports);
+router.post("/revenue-distribution", auth(["admin"]), adminController.getRevenueDistribution);
 
 // ===== GUESTHOUSES =====
 router.post("/guesthouses/list", auth(["admin"]), adminController.getAllGuestHouses);
@@ -95,7 +97,25 @@ router.post("/atolls/islands/delete", auth(["admin"]), adminController.deleteIsl
 
 router.post("/facilities/list", auth(["admin"]), customerController.getAllfacilities);
 router.post("/facilities/add", auth(["admin"]), adminController.createFacility);
+router.post("/facilities/update", auth(["admin"]), adminController.updateFacility);
+router.post("/facilities/status", auth(["admin"]), adminController.activeInactiveFacility);
 router.post("/facilities/delete", auth(["admin"]), adminController.deleteFacility);
 
+
+router.post("/roomCategory/list", auth(["admin"]), adminController.getAllRoomCategories);
+router.post("/roomCategory/add", auth(["admin"]), adminController.createRoomCategory);
+router.post("/roomCategory/edit", auth(["admin"]), adminController.updateRoomCategory);
+router.post("/roomCategory/status", auth(["admin"]), adminController.changeRoomCategoryStatus);
+router.post("/roomCategory/delete", auth(["admin"]), adminController.deleteRoomCategory);
+
+router.post('/bedType/add', auth(["admin"]), adminController.addBedType);
+router.post('/bedType/list', auth(["admin"]), adminController.getAllBedTypes);
+router.post('/bedType/edit', auth(["admin"]), adminController.editBedType);
+router.post('/bedType/status', auth(["admin"]), adminController.changeStatus);
+router.post('/bedType/delete', auth(["admin"]), adminController.deleteBedType);
+
+// _____________-MANAGE PAYMENT
+router.post("/payments", adminController.getAllPayments);
+router.post("/payments/details", adminController.getPaymentDetails);
 
 module.exports = router;

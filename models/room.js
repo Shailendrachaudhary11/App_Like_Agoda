@@ -24,6 +24,7 @@ const roomSchema = new mongoose.Schema({
             ref: 'Facility', //  Reference to Facility model
         },
     ],
+
     pricePerNight: { type: Number, required: true },
     priceWeekly: { type: Number },
     priceMonthly: { type: Number },
