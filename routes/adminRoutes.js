@@ -32,6 +32,7 @@ router.post("/guesthouses/view", auth(["admin"]), adminController.getGuestHouses
 // router.post("/guesthouses/approve", auth(["admin"]), adminController.approveGuesthouseRegistration);
 // router.post("/guesthouses/reject", auth(["admin"]), adminController.rejectGuesthouseRegistration);
 router.post("/guesthouses/status", auth(["admin"]), adminController.activeInactiveGuesthouse);
+router.post("/guesthouses/delete", auth(["admin"]), adminController.deleteGuesthouse);
 
 
 // ===== GUESTHOUSE OWNERS =====
@@ -95,7 +96,7 @@ router.post("/atolls/islands/status", auth(["admin"]), adminController.activeInA
 router.post("/atolls/islands/update", auth(["admin"]), adminController.editIsland);
 router.post("/atolls/islands/delete", auth(["admin"]), adminController.deleteIsland);
 
-router.post("/facilities/list", auth(["admin"]), customerController.getAllfacilities);
+router.post("/facilities/list", auth(["admin"]), adminController.getAllfacilities);
 router.post("/facilities/add", auth(["admin"]), adminController.createFacility);
 router.post("/facilities/update", auth(["admin"]), adminController.updateFacility);
 router.post("/facilities/status", auth(["admin"]), adminController.activeInactiveFacility);
@@ -115,7 +116,10 @@ router.post('/bedType/status', auth(["admin"]), adminController.changeStatus);
 router.post('/bedType/delete', auth(["admin"]), adminController.deleteBedType);
 
 // _____________-MANAGE PAYMENT
-router.post("/payments", adminController.getAllPayments);
-router.post("/payments/details", adminController.getPaymentDetails);
+router.post("/payments", auth(["admin"]), adminController.getAllPayments);
+router.post("/payments/details", auth(["admin"]), adminController.getPaymentDetails);
+
+//_______________ MANAGE REPORT
+router.post("/reports", auth(["admin"]), adminController.getReports)
 
 module.exports = router;

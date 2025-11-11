@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const customerController = require("../controller/customerController")
-const auth = require("../middlewares/authMiddleware")
+const customerController = require("../controller/customerController");
+const adminController = require("../controller/adminController");
+const auth = require("../middlewares/authMiddleware");
+const upload = require("../middlewares/upload");
 
 router.post("/customer/atolls/guesthouses", auth(["customer"]), customerController.getAllGuesthouseWithAllAtolls);
 router.post("/customer/promoImages", auth(["customer"]), customerController.getPromoImage);
@@ -42,9 +44,9 @@ router.post("/customer/favorites/list", auth(["customer"]), customerController.g
 router.post("/customer/favorites/add", auth(["customer"]), customerController.addFavorites);
 
 
-router.post("/customer/atolls/list", auth(["customer","guesthouse"]), customerController.getAllAtolls);
-router.post("/customer/facilities/list", auth(["customer","guesthouse"]), customerController.getAllfacilities);
-router.post("/customer/islands/list", auth(["customer","guesthouse"]), customerController.getAllIslands);
+router.post("/customer/atolls/list", auth(["customer", "guesthouse"]), customerController.getAllAtolls);
+router.post("/customer/facilities/list", auth(["customer", "guesthouse"]), customerController.getAllfacilities);
+router.post("/customer/islands/list", auth(["customer", "guesthouse"]), customerController.getAllIslands);
 router.post("/customer/bedTypes/list", auth(["customer"]), customerController.getAllBedTypes);
 
 
@@ -54,5 +56,7 @@ router.post("/customer/cards/list", auth(["customer"]), customerController.getAl
 router.post("/customer/wallet/addAmount", auth(["customer"]), customerController.addWallet);
 router.post("/customer/wallet", auth(["customer"]), customerController.getWallet);
 
+router.post("/report", auth(["customer"]), upload.single("issueImage"), customerController.report)
+router.post("/report/issueTypes", auth(["customer"]), adminController.getIssueTypes)
 
 module.exports = router;

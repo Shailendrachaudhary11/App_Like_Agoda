@@ -1629,5 +1629,9 @@ exports.countNewNotifications = async (req, res) => {
     }
 };
 
+//__________________________________-- Payment history
+exports.payoutHistory = async (req, res) =>{
+    
+}
 
 

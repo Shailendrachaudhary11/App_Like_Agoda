@@ -17,6 +17,7 @@ const storage = multer.diskStorage({
     else if (file.fieldname === "profileImage") folder = "uploads/profileImage";
     else if (file.fieldname === "atollImage") folder = "uploads/atolls";
     else if (file.fieldname === "promoImage") folder = "uploads/promoImage";
+    else if (file.fieldname === "issueImage") folder = "uploads/issueImage";
 
     const fullPath = path.join(rootDir, folder);
 

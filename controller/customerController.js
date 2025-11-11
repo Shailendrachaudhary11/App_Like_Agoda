@@ -22,6 +22,8 @@ const Card = require('../models/Card');
 const Wallet = require("../models/Wallet");
 const getRemainingTime = require("../utils/remainingTime");
 const Atoll = require("../models/Atoll");
+const Issue = require("../models/Issue");
+const mongoose = require('mongoose');
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -1026,7 +1028,6 @@ exports.getBooking = async (req, res) => {
                 select: "name phone profileImage"
             });
 
-
         if (!booking) {
             return res.status(404).json({
                 success: false,
@@ -1072,7 +1073,7 @@ exports.getBooking = async (req, res) => {
                 customerProfileImage: `${BASE_URL}/uploads/profileImage/${customer.profileImage}`,
                 customerContact: customer.phone || "",
                 paymentMethod: "N/A",
-                paymentStatus: "unpaid",
+                paymentStatus: "N/A",
                 paymentDate: "N/A",
             };
 
@@ -1846,15 +1847,20 @@ exports.getReviewByGuestHouse = async (req, res) => {
     }
 };
 
+// _______________________ PROMOS
+
 exports.getAllPromos = async (req, res) => {
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0); // remove time portion
 
+        const istOffset = 5.5 * 60 * 60 * 1000; // +5:30 hours
+        const todayIST = new Date(today.getTime() + istOffset);
+
         const promos = await Promo.find({
             status: "active",
-            startDate: { $lte: today }, // promo already started
-            endDate: { $gte: today },   // promo not yet ended
+            startDate: { $lte: todayIST }, // promo already started
+            endDate: { $gte: todayIST },   // promo not yet ended
         })
             .sort({ createdAt: -1 })
             .select("-createdAt -updatedAt -__v");
@@ -1906,12 +1912,10 @@ exports.getPromoById = async (req, res) => {
 
         const promo = await Promo.findOne({
             _id: promoId,
-            isActive: true,
-            endDate: { $gte: today }
-        }).select("-createdAt -isActive")
+            status: "active",
+        }).select("-createdAt -updatedAt -__v")
 
         if (!promo) {
-            logger.info(`[PROMO] No active promo code found with ID: ${promoId}`);
             return res.status(404).json({
                 success: true,
                 message: "No active promo code found.",
@@ -2622,6 +2626,66 @@ exports.getWallet = async (req, res) => {
     }
 };
 
+//_____________________________ Report and Issue
+
+exports.report = async (req, res) => {
+    try {
+        const customerId = req.user.id;
+
+        const { issueType, description, guesthouse } = req.body;
+
+        if (!issueType || !description || !guesthouse) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields (issueType, description, name, email, phone, guesthouse) are required",
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(guesthouse)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid guesthouse ID",
+            });
+        }
+
+        const guesthousefound = await Guesthouse.findById(guesthouse);
+
+        if (!guesthousefound) {
+            return res.status(404).json({
+                success: false,
+                message: "guesthouse not found"
+            })
+        }
+
+        const randomNumber = Math.floor(100000 + Math.random() * 900000);
+        const ticketId = `T-${randomNumber}`;
+
+        const newIssue = new Issue({
+            issueType,
+            ticketId,
+            description,
+            guesthouse,
+            customer: customerId,
+            issueImage: req.file ? req.file.filename : null,
+        });
+
+
+        await newIssue.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Issue reported successfully",
+            data: newIssue,
+        });
+    } catch (error) {
+        console.error("[Issue] report error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while reporting issue",
+            error: error.message,
+        });
+    }
+};
 
 
 

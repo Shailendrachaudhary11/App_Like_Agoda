@@ -24,6 +24,8 @@ router.post("/guesthouse/bookings/list", auth(["guesthouse"]), guesthouseControl
 router.post("/guesthouse/bookings/view", auth(["guesthouse"]), guesthouseController.getBookingById);
 router.post("/guesthouse/bookings/download-invoice", auth(["guesthouse"]), guesthouseController.downloadInvoice);
 
+//_______________Payout history
+
 
 // notificaition
 router.post("/guesthouse/notifications/list", auth(["guesthouse"]), guesthouseController.getAllNotification);

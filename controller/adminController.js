@@ -18,6 +18,8 @@ const Atoll = require("../models/Atoll");
 const RoomCategory = require('../models/RoomCategory');
 const BedType = require('../models/BedType');
 const mongoose = require('mongoose');
+const Issue = require("../models/Issue");
+const moment = require("moment-timezone");
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -1037,98 +1039,98 @@ exports.getAllGuestHouses = async (req, res) => {
     }
 };
 
-exports.updateGuestHouse = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const {
-            name,
-            address,
-            location,
-            contactNumber,
-            description,
-            price,
-            facilities,
-            stars,
-            Atoll,
-            islands
-        } = req.body;
+// exports.updateGuestHouse = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         const {
+//             name,
+//             address,
+//             location,
+//             contactNumber,
+//             description,
+//             price,
+//             facilities,
+//             stars,
+//             Atoll,
+//             islands
+//         } = req.body;
 
-        const guesthouse = await Guesthouse.findById(id);
+//         const guesthouse = await Guesthouse.findById(id);
 
-        if (!guesthouse) {
-            return res.status(404).json({
-                success: false,
-                message: "Guesthouse not found",
-            });
-        }
+//         if (!guesthouse) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "Guesthouse not found",
+//             });
+//         }
 
-        console.log(`[GUESTHOUSE] Updating guesthouse ${id} by user ${req.user?.id || "unknown"}`);
+//         console.log(`[GUESTHOUSE] Updating guesthouse ${id} by user ${req.user?.id || "unknown"}`);
 
-        //  Handle images (optional)
-        if (req.files && req.files.length > 0) {
-            guesthouse.guestHouseImage = req.files.map(file => file.filename);
-        }
+//         //  Handle images (optional)
+//         if (req.files && req.files.length > 0) {
+//             guesthouse.guestHouseImage = req.files.map(file => file.filename);
+//         }
 
-        //  Dynamic fields update
-        const fields = {
-            name,
-            address,
-            contactNumber,
-            description,
-            price,
-            stars,
-            Atoll,
-            islands
-        };
+//         //  Dynamic fields update
+//         const fields = {
+//             name,
+//             address,
+//             contactNumber,
+//             description,
+//             price,
+//             stars,
+//             Atoll,
+//             islands
+//         };
 
-        for (const key in fields) {
-            if (fields[key] !== undefined && fields[key] !== null) {
-                guesthouse[key] = fields[key];
-            }
-        }
+//         for (const key in fields) {
+//             if (fields[key] !== undefined && fields[key] !== null) {
+//                 guesthouse[key] = fields[key];
+//             }
+//         }
 
-        //  Facilities update (must be array)
-        if (facilities) {
-            guesthouse.facilities = Array.isArray(facilities)
-                ? facilities
-                : facilities.split(",").map(f => f.trim()).filter(Boolean);
-        }
+//         //  Facilities update (must be array)
+//         if (facilities) {
+//             guesthouse.facilities = Array.isArray(facilities)
+//                 ? facilities
+//                 : facilities.split(",").map(f => f.trim()).filter(Boolean);
+//         }
 
-        //  Location update (lng, lat)
-        if (location && Array.isArray(location.coordinates) && location.coordinates.length === 2) {
-            guesthouse.location = {
-                type: "Point",
-                coordinates: location.coordinates
-            };
-        }
+//         //  Location update (lng, lat)
+//         if (location && Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+//             guesthouse.location = {
+//                 type: "Point",
+//                 coordinates: location.coordinates
+//             };
+//         }
 
-        await guesthouse.save();
+//         await guesthouse.save();
 
-        //  Notification
-        await createNotification(
-            { userId: req.user.id, role: req.user.role },   // sender
-            { userId: guesthouse.owner, role: "guesthouse" }, // receiver
-            "Guesthouse Updated",
-            `Your guesthouse "${guesthouse.name}" has been updated successfully by admin.`,
-            "system",
-            { guesthouseId: guesthouse._id }
-        );
+//         //  Notification
+//         await createNotification(
+//             { userId: req.user.id, role: req.user.role },   // sender
+//             { userId: guesthouse.owner, role: "guesthouse" }, // receiver
+//             "Guesthouse Updated",
+//             `Your guesthouse "${guesthouse.name}" has been updated successfully by admin.`,
+//             "system",
+//             { guesthouseId: guesthouse._id }
+//         );
 
-        return res.status(200).json({
-            success: true,
-            message: "Guesthouse updated successfully.",
-            data: guesthouse
-        });
+//         return res.status(200).json({
+//             success: true,
+//             message: "Guesthouse updated successfully.",
+//             data: guesthouse
+//         });
 
-    } catch (err) {
-        console.error("[GUESTHOUSE] Error:", err.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while updating guesthouse",
-            error: err.message,
-        });
-    }
-};
+//     } catch (err) {
+//         console.error("[GUESTHOUSE] Error:", err.message);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Internal server error while updating guesthouse",
+//             error: err.message,
+//         });
+//     }
+// };
 
 exports.getGuestHousesById = async (req, res) => {
     try {
@@ -1306,6 +1308,45 @@ exports.activeInactiveGuesthouse = async (req, res) => {
             success: false,
             message: "Failed to activate guesthouse.",
             error: err.message
+        });
+    }
+};
+
+exports.deleteGuesthouse = async (req, res) => {
+    try {
+        const { guesthouseId } = req.body;
+
+        //  Validate ID
+        if (!mongoose.Types.ObjectId.isValid(guesthouseId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid guesthouse ID",
+            });
+        }
+
+        //  Find guesthouse
+        const guesthouse = await Guesthouse.findById(guesthouseId);
+        if (!guesthouse) {
+            return res.status(404).json({
+                success: false,
+                message: "Guesthouse not found",
+            });
+        }
+
+        //  Delete guesthouse
+        await Guesthouse.findByIdAndDelete(guesthouseId);
+
+        return res.status(200).json({
+            success: true,
+            message: `Guesthouse "${guesthouse.name}" deleted successfully.`,
+        });
+
+    } catch (error) {
+        console.error("[Guesthouse] delete error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while deleting guesthouse",
+            error: error.message,
         });
     }
 };
@@ -3478,6 +3519,34 @@ exports.editIsland = async (req, res) => {
 };
 
 //________________________ FACILITY___________________
+exports.getAllfacilities = async (req, res) => {
+    try {
+        const facilities = await Facility.find()
+            .select("name status")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const modifiedAtolls = facilities.map(facilitie => ({
+            id: facilitie._id,
+            name: facilitie.name,
+            status: facilitie.status
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: modifiedAtolls.length,
+            message: "Successfully fetch all facilities",
+            data: modifiedAtolls
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching facilities",
+            error: error.message // It's helpful to include the error message for debugging
+        });
+    }
+};
 
 exports.updateFacility = async (req, res) => {
     try {
@@ -3569,20 +3638,16 @@ exports.activeInactiveFacility = async (req, res) => {
         }
 
         //  Find facility
-        const facility = await Facility.findById(facilityId);
+        let facility = await Facility.findById(facilityId);
         if (!facility) {
             return res.status(404).json({
                 success: false,
                 message: "Facility not found"
             });
         }
+        // console.log(facility);
 
-        if (facility === "active") {
-            facility = "inactive";
-        }
-        else {
-            facility = "active";
-        }
+        facility.status = facility.status === "active" ? "inactive" : "active";
 
         await facility.save();
 
@@ -4239,7 +4304,93 @@ exports.getPaymentDetails = async (req, res) => {
     }
 };
 
+exports.getIssueTypes = async (req, res) => {
+    try {
+        const issueTypes = [
+            "Booking Related Issue",
+            "Payment / Refund Issue",
+            "Room Issue",
+            "Staff Behaviour",
+            "Check-in / Check-out Issue",
+            "Amenities / Service Issue",
+            "Fake Listing / Misleading Information",
+            "Cancellation Issue",
+            "Safety / Security Issue",
+            "Other"
+        ];
 
+        return res.status(200).json({
+            success: true,
+            message: "Issue types fetched successfully",
+            count: issueTypes.length,
+            data: issueTypes
+        });
+    } catch (error) {
+        console.error("[Issue] getIssueTypes error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching issue types",
+            error: error.message
+        });
+    }
+};
+
+// ______________________ MANAGE REPORT
+
+exports.getReports = async (req, res) => {
+    try {
+        const reports = await Issue.find()
+            .select("issueType ticketId status customer guesthouse createdAt")
+            .populate("customer", "name")
+            .populate("guesthouse", "name")
+            .sort({ createdAt: -1 })
+
+        if (!reports || reports.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No reports found"
+            });
+        }
+
+        const formatted = reports.map((report) => ({
+            ticketId: report.ticketId,
+            issueType: report.issueType,
+            status: report.status,
+            time: moment(report.createdAt)
+                .tz("Asia/Kolkata")
+                .format("DD-MM-YYYY hh:mm A"),
+            customer: report.customer?.name || "N/A",
+            guesthouse: report.guesthouse?.name || "N/A"
+        }))
+
+        return res.status(200).json({
+            success: true,
+            message: "Reports fetched successfully",
+            count: formatted.length,
+            data: formatted
+        });
+
+    } catch (error) {
+        console.error("[Issue] getReports error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching reports",
+            error: error.message
+        });
+    }
+};
+
+// exports.changeStatusReport = async (req, res) =>{
+//     try{
+//         const { reportId, status} = req.body;
+//         if(!reportId || !status){
+
+//         }
+
+//     } catch(error){
+
+//     }
+// }
 
 
 
