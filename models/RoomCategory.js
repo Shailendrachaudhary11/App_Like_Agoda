@@ -12,7 +12,6 @@ const roomCategorySchema = new mongoose.Schema({
     enum: ["active", "inactive"],
     default: "active"
   },
-  description : String
 }, { timestamps: true });
 
 module.exports = mongoose.model("RoomCategory", roomCategorySchema);

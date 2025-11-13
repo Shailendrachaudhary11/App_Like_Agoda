@@ -25,6 +25,14 @@ const BASE_URL = process.env.BASE_URL;
 
 // ________________________________________________________
 
+function toIST(dateString) {
+    const date = new Date(dateString);
+    // Add IST offset (5 hours 30 minutes)
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    return new Date(date.getTime() + istOffset);
+}
+
+
 exports.register = async (req, res) => {
     try {
         const data = req.body;
@@ -651,78 +659,78 @@ exports.getMonthlyReports = async (req, res) => {
     }
 };
 
-exports.getRevenueDistribution = async (req, res) => {
-    try {
-        const { startDate, endDate } = req.body; // frontend se aa rahe hain (optional)
+// exports.getRevenueDistribution = async (req, res) => {
+//     try {
+//         const { startDate, endDate } = req.body; // frontend se aa rahe hain (optional)
 
-        let matchStage = {}; // default: saare bookings
-        if (startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
+//         let matchStage = {}; // default: saare bookings
+//         if (startDate && endDate) {
+//             const start = new Date(startDate);
+//             const end = new Date(endDate);
 
-            // validation
-            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid startDate or endDate format"
-                });
-            }
+//             // validation
+//             if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Invalid startDate or endDate format"
+//                 });
+//             }
 
-            if (end < start) {
-                return res.status(400).json({
-                    success: false,
-                    message: "endDate must be greater than or equal to startDate"
-                });
-            }
+//             if (end < start) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "endDate must be greater than or equal to startDate"
+//                 });
+//             }
 
-            // filter bookings by date range
-            matchStage = {
-                createdAt: { $gte: start, $lte: end }
-            };
-        }
+//             // filter bookings by date range
+//             matchStage = {
+//                 createdAt: { $gte: start, $lte: end }
+//             };
+//         }
 
-        // aggregation pipeline
-        const result = await Booking.aggregate([
-            { $match: matchStage },
-            {
-                $group: {
-                    _id: null,
-                    bookings: { $sum: 1 },
-                    cancellations: {
-                        $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
-                    },
-                    revenue: {
-                        $sum: {
-                            $cond: [
-                                { $in: ["$status", ["confirmed", "completed"]] },
-                                "$finalAmount",
-                                0
-                            ]
-                        }
-                    }
-                }
-            }
-        ]);
+//         // aggregation pipeline
+//         const result = await Booking.aggregate([
+//             { $match: matchStage },
+//             {
+//                 $group: {
+//                     _id: null,
+//                     bookings: { $sum: 1 },
+//                     cancellations: {
+//                         $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
+//                     },
+//                     revenue: {
+//                         $sum: {
+//                             $cond: [
+//                                 { $in: ["$status", ["confirmed", "completed"]] },
+//                                 "$finalAmount",
+//                                 0
+//                             ]
+//                         }
+//                     }
+//                 }
+//             }
+//         ]);
 
-        const data = result[0] || { bookings: 0, cancellations: 0, revenue: 0 };
+//         const data = result[0] || { bookings: 0, cancellations: 0, revenue: 0 };
 
-        return res.status(200).json({
-            success: true,
-            message: startDate && endDate
-                ? `Revenue distribution from ${startDate} to ${endDate}`
-                : "Revenue distribution data (all time)",
-            data
-        });
+//         return res.status(200).json({
+//             success: true,
+//             message: startDate && endDate
+//                 ? `Revenue distribution from ${startDate} to ${endDate}`
+//                 : "Revenue distribution data (all time)",
+//             data
+//         });
 
-    } catch (error) {
-        console.error("Error in getRevenueDistribution:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error while fetching booking distribution",
-            error: error.message
-        });
-    }
-};
+//     } catch (error) {
+//         console.error("Error in getRevenueDistribution:", error);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Internal server error while fetching booking distribution",
+//             error: error.message
+//         });
+//     }
+// };
 
 
 // ________________________________________________________
@@ -985,7 +993,9 @@ exports.getAllGuestHouses = async (req, res) => {
         const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
         // Fetch guesthouses
         const guestHouses = await Guesthouse.find()
-            .select("-location -owner -description -facilities -__v -createdAt")
+            .select("-location -owner -description -facilities -__v -createdAt -isFavourite")
+            .populate("atolls", "name")    // only fetch atoll name
+            .populate("islands", "name")
             .lean(); // lean() for better performance
 
         if (!guestHouses.length) {
@@ -1015,6 +1025,10 @@ exports.getAllGuestHouses = async (req, res) => {
                 } catch {
                     gh.reviews = 0;
                 }
+
+                // Replace atoll/island with their names only
+                gh.atolls = gh.atolls?.name || null;
+                gh.islands = gh.islands?.name || null;
 
                 return gh;
             })
@@ -1173,7 +1187,7 @@ exports.getGuestHousesById = async (req, res) => {
             guestHouseObj.guestHouseImage = [];
         }
 
-        guestHouseObj.stars = guestHouseObj.stars != null ? parseFloat(guestHouseObj.stars).toFixed(1) : "0.0";
+        // guestHouseObj.stars = guestHouseObj.stars != null ? parseFloat(guestHouseObj.stars).toFixed(1) : "0.0";
         guestHouseObj.cleaningFee = guestHouseObj.cleaningFee ? parseFloat(guestHouseObj.cleaningFee) : 0;
         guestHouseObj.taxPercent = guestHouseObj.taxPercent ? parseFloat(guestHouseObj.taxPercent) : 0;
         // Convert Atoll, islands, facilities to proper format
@@ -1217,7 +1231,7 @@ exports.getGuestHousesById = async (req, res) => {
 
         guestHouseObj.rating = Number(rating);
         guestHouseObj.reviewsCount = reviewsCount;
-        guestHouseObj.reviewScore = reviewScore;
+        // guestHouseObj.reviewScore = reviewScore;
         guestHouseObj.reviewsText = reviewsText;
 
         guestHouseObj.ownerDetails = owner
@@ -1602,7 +1616,11 @@ exports.getRoomById = async (req, res) => {
                 path: "bedType",
                 select: "name"
             })
-            .select("roomCategory bedType capacity photos amenities pricePerNight priceWeekly priceMonthly description active")
+            .populate({
+                path: "facilities",   // 🆕 populate facilities
+                select: "name" // optional fields
+            })
+            .select("roomCategory bedType capacity photos amenities pricePerNight priceWeekly priceMonthly description active facilities")
 
         if (!room) {
             return res.status(404).json({
@@ -2488,6 +2506,47 @@ exports.pendingBooking = async (req, res) => {
     }
 }
 
+exports.deleteBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.body;
+
+        //  Validate bookingId
+        if (!bookingId || bookingId.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Booking ID is required",
+            });
+        }
+
+        // Find and delete booking
+        const booking = await Booking.findByIdAndDelete(bookingId);
+
+        //  If booking not found
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking not found",
+            });
+        }
+
+        //  Success response
+        return res.status(200).json({
+            success: true,
+            message: "Booking deleted successfully",
+            deletedBooking: booking,
+        });
+
+    } catch (error) {
+        console.error("Error deleting booking:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
+
+
 //___________________________________________________PROMO ____________________________________
 
 
@@ -2500,6 +2559,7 @@ exports.getAllPromo = async (req, res) => {
 
         const promosWithUrls = promos.map(promo => ({
             ...promo.toObject(),
+            code: promo.code.toUpperCase(),
             promoImage: promo.promoImage
                 ? `${BASE_URL}/uploads/promoImage/${promo.promoImage}`
                 : null
@@ -2632,8 +2692,6 @@ exports.createPromo = async (req, res) => {
     }
 };
 
-
-
 exports.getPromoById = async (req, res) => {
     try {
         const { id } = req.body;
@@ -2657,6 +2715,8 @@ exports.getPromoById = async (req, res) => {
         if (promo.promoImage) {
             promo.promoImage = `${BASE_URL}/uploads/promoImage/${promo.promoImage}`;
         }
+
+        promo.code = promo.code.toUpperCase();
 
         return res.status(200).json({
             success: true,
@@ -3771,9 +3831,10 @@ exports.deleteFacility = async (req, res) => {
 
 
 //  Create Room Category
+
 exports.createRoomCategory = async (req, res) => {
     try {
-        const { name, description } = req.body;
+        const { name } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ success: false, message: "Category name is required" });
@@ -3809,24 +3870,12 @@ exports.createRoomCategory = async (req, res) => {
             });
         }
 
-        let finalDescription = "";
-        if (description) {
-            const descTrimmed = description.trim();
-            if (descTrimmed.length > 150) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Description must not exceed 150 characters.",
-                });
-            }
-            finalDescription = descTrimmed;
-        }
 
         const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1);
 
         //  Create category
         const newCategory = await RoomCategory.create({
             name: formattedName,
-            description: finalDescription,
             status: "active",
         });
 
@@ -3841,7 +3890,6 @@ exports.createRoomCategory = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error while create adding room-category", error: error.message });
     }
 };
-
 
 exports.getAllRoomCategories = async (req, res) => {
     try {
@@ -3885,7 +3933,7 @@ exports.getAllRoomCategories = async (req, res) => {
 
 exports.updateRoomCategory = async (req, res) => {
     try {
-        const { roomCatId, name, description, status } = req.body;
+        const { roomCatId, name } = req.body;
 
         //  roomCatId required
         if (!roomCatId) {
@@ -3928,15 +3976,6 @@ exports.updateRoomCategory = async (req, res) => {
             roomCategory.name = name.trim();
         }
 
-        //  Description update (optional)
-        if (description && description.trim() !== "") {
-            roomCategory.description = description.trim();
-        }
-
-        //  Status validation (optional)
-        if (status && ["active", "inactive"].includes(status)) {
-            roomCategory.status = status;
-        }
 
         const updated = await roomCategory.save();
 
@@ -3945,6 +3984,7 @@ exports.updateRoomCategory = async (req, res) => {
             message: "Room Category updated successfully",
             data: updated
         });
+
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -4218,6 +4258,46 @@ exports.getAllPayments = async (req, res) => {
     }
 };
 
+exports.deletePayment = async (req, res) => {
+    try {
+        const { paymentId } = req.body;
+
+        //  Validate paymentId
+        if (!paymentId || paymentId.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "paymentId is required",
+            });
+        }
+
+        // Find and delete payment
+        const payment = await Payment.findByIdAndDelete(paymentId);
+
+        //  If payment not found
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: "Payment not found",
+            });
+        }
+
+        //  Success response
+        return res.status(200).json({
+            success: true,
+            message: "Payment deleted successfully",
+            deletedPayment: payment,
+        });
+
+    } catch (error) {
+        console.error("Error deleting payment:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
+
 exports.getPaymentDetails = async (req, res) => {
     try {
         const { paymentId } = req.body;
@@ -4307,15 +4387,10 @@ exports.getPaymentDetails = async (req, res) => {
 exports.getIssueTypes = async (req, res) => {
     try {
         const issueTypes = [
-            "Booking Related Issue",
-            "Payment / Refund Issue",
-            "Room Issue",
-            "Staff Behaviour",
-            "Check-in / Check-out Issue",
-            "Amenities / Service Issue",
-            "Fake Listing / Misleading Information",
-            "Cancellation Issue",
-            "Safety / Security Issue",
+            "App Crash",
+            "Payment Issue",
+            "Booking Issue",
+            "slow Performance",
             "Other"
         ];
 
@@ -4353,6 +4428,7 @@ exports.getReports = async (req, res) => {
         }
 
         const formatted = reports.map((report) => ({
+            _id: report._id,
             ticketId: report.ticketId,
             issueType: report.issueType,
             status: report.status,
@@ -4380,18 +4456,161 @@ exports.getReports = async (req, res) => {
     }
 };
 
-// exports.changeStatusReport = async (req, res) =>{
-//     try{
-//         const { reportId, status} = req.body;
-//         if(!reportId || !status){
+exports.changeStatusReport = async (req, res) => {
+    try {
+        const { reportId, status } = req.body;
 
-//         }
+        // Validate required fields
+        if (!reportId || !status) {
+            return res.status(400).json({
+                success: false,
+                message: "reportId and status are required",
+            });
+        }
 
-//     } catch(error){
+        // Validate status values
+        const validStatuses = ["Pending", "In Progress", "Resolved", "Rejected"];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status. Allowed: ${validStatuses.join(", ")}`,
+            });
+        }
 
-//     }
-// }
+        // Find existing report first
+        const report = await Issue.findById(reportId);
+        if (!report) {
+            return res.status(404).json({
+                success: false,
+                message: "Report not found",
+            });
+        }
 
+        // Check if report is already Resolved or Rejected
+        if (["Resolved", "Rejected"].includes(report.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot change status because this report is already ${report.status}.`,
+            });
+        }
+
+        // Update the report status
+        report.status = status;
+        await report.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Report status updated successfully",
+            data: report,
+        });
+
+    } catch (error) {
+        console.error("[Issue] changeStatusReport error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while changing the status of report",
+            error: error.message,
+        });
+    }
+};
+
+exports.viewReport = async (req, res) => {
+    try {
+        const { reportId } = req.body;
+
+        if (!reportId) {
+            return res.status(400).json({
+                success: false,
+                message: "reportId is required",
+            });
+        }
+
+        const report = await Issue.findById(reportId)
+            .populate("customer", "name email phone")
+            .populate("guesthouse", "name address contactNumber");
+
+        if (!report) {
+            return res.status(404).json({
+                success: false,
+                message: "Report not found",
+            });
+        }
+
+        const formatted = {
+            _id: report._id,
+            ticketId: report.ticketId,
+            issueType: report.issueType,
+            description: report.description,
+            status: report.status,
+            createdAt: moment(report.createdAt)
+                .tz("Asia/Kolkata")
+                .format("DD-MM-YYYY hh:mm A"),
+            customer: report.customer
+                ? { name: report.customer.name, email: report.customer.email, contactNumber: report.customer.phone }
+                : { name: "N/A", email: "N/A", phone: "N/A" },
+            guesthouse: report.guesthouse
+                ? { name: report.guesthouse.name, address: report.guesthouse.address, contactNumber: report.guesthouse.contactNumber }
+                : { name: "N/A", address: "N/A", contactNumber: "N/A" },
+            issueImage: report.issueImage
+                ? `${BASE_URL}/uploads/issueImage/${report.issueImage}`
+                : null
+        };
+
+        return res.status(200).json({
+            success: true,
+            message: "Report fetched successfully",
+            data: formatted,
+        });
+
+    } catch (error) {
+        console.error("[Issue] viewReport error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching report",
+            error: error.message,
+        });
+    }
+};
+
+exports.deleteReport = async (req, res) => {
+    try {
+        const { reportId } = req.body;
+
+        //  Validate input
+        if (!reportId || reportId.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "reportId is required",
+            });
+        }
+
+        // Find and delete the report
+        const report = await Issue.findByIdAndDelete(reportId);
+
+        //  Check if report exists
+        if (!report) {
+            return res.status(404).json({
+                success: false,
+                message: "Report not found",
+            });
+        }
+
+        //  Success response
+        return res.status(200).json({
+            success: true,
+            message: "Report deleted successfully",
+            deletedReport: report,
+        });
+
+    } catch (error) {
+        console.error("Error deleting report:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
 
 
 

@@ -5136,3 +5136,17 @@
 {"level":"info","message":"[REVIEW] Customer 68e3be34c79b984dbf24f29e added review for GuestHouse 6909c57617f7f2acf6fef92c","timestamp":"2025-11-11 10:10:28"}
 {"level":"info","message":"Fetched 14 guesthouses successfully.","timestamp":"2025-11-11 16:32:41"}
 {"level":"info","message":"[PROMO] Fetched active promo code with ID: 691174d39b18009cc677c28f","timestamp":"2025-11-11 17:15:11"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 12:33:42"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 12:34:14"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 12:42:56"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 13:10:30"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 13:10:32"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 13:11:26"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 13:14:24"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 13:14:29"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 14:03:27"}
+{"level":"info","message":"Fetched 13 guesthouses successfully.","timestamp":"2025-11-13 14:11:43"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 17:12:00"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 17:12:19"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 17:29:43"}
+{"level":"info","message":"[GuestHouse] Fetched successfully","timestamp":"2025-11-13 17:44:33"}

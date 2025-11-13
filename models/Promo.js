@@ -8,7 +8,6 @@ const promoSchema = new mongoose.Schema({
     endDate: { type: Date, required: true },
     promoImage: {
         type: String,
-        required: true,
         trim: true
     },
     status: { type: String, default: "active" }

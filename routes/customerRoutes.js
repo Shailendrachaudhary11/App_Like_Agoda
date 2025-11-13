@@ -32,7 +32,6 @@ router.post("/customer/reviews/list", auth(["customer", "guesthouse"]), customer
 router.post("/customer/promos/list", auth(["customer"]), customerController.getAllPromos);
 router.post("/customer/promos/details", auth(["customer"]), customerController.getPromoById);
 
-
 router.post("/customer/notifications/list", auth(["customer"]), customerController.getAllNotification);
 router.post("/customer/notifications/read", auth(["customer"]), customerController.readNotification);
 router.post("/customer/notifications/delete", auth(["customer"]), customerController.deleteNotification);
@@ -56,7 +55,8 @@ router.post("/customer/cards/list", auth(["customer"]), customerController.getAl
 router.post("/customer/wallet/addAmount", auth(["customer"]), customerController.addWallet);
 router.post("/customer/wallet", auth(["customer"]), customerController.getWallet);
 
-router.post("/report", auth(["customer"]), upload.single("issueImage"), customerController.report)
-router.post("/report/issueTypes", auth(["customer"]), adminController.getIssueTypes)
+router.post("/report", auth(["customer"]), upload.single("issueImage"), customerController.report);
+router.post("/report/issueTypes", auth(["customer"]), adminController.getIssueTypes);
+router.post("/guesthouse/names", auth(["customer"]), customerController.getAllGuesthouseName);
 
 module.exports = router;

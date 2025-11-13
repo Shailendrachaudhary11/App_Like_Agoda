@@ -10,22 +10,254 @@ const getRemainingTime = require("../utils/remainingTime");
 const Payment = require("../models/Payment")
 const RoomCategory = require("../models/RoomCategory");
 const BedType = require("../models/BedType");
-const Admin = require("../models/adminUser");
 const PDFDocument = require("pdfkit");
 const path = require("path");
 const fs = require("fs");
 const Atoll = require("../models/Atoll");
 const Island = require("../models/Island");
+const moment = require("moment-timezone");
+const mongoose = require("mongoose");
+
 
 const BASE_URL = process.env.BASE_URL;
 
 
 // -------------------------------- GUESTHOUSE --------------------------------
 
+
+// exports.manageGuestHouse = async (req, res) => {
+//     try {
+//         const ownerId = req.user._id;
+//         const {
+//             name,
+//             address,
+//             location,
+//             contactNumber,
+//             description,
+//             price,
+//             facilities,
+//             atolls,
+//             islands,
+//             cleaningFee,
+//             taxPercent,
+//             latitude,
+//             longitude
+//         } = req.body;
+
+//         console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
+
+//         //  Step 1: Check if guesthouse already exists
+//         let guesthouse = await Guesthouse.findOne({ owner: ownerId });
+
+//         //  Step 2: If guesthouse exists → skip validation, only update fields
+//         if (guesthouse) {
+//             console.log("[UPDATE] Existing guesthouse found, skipping validation...");
+
+
+//             let locObj = guesthouse?.location || null;
+
+//             if (req.body.latitude && req.body.longitude) {
+//                 const lat = parseFloat(req.body.latitude);
+//                 const lng = parseFloat(req.body.longitude);
+//                 if (!isNaN(lat) && !isNaN(lng)) {
+//                     locObj = {
+//                         type: "Point",
+//                         coordinates: [lng, lat]
+//                     };
+//                 }
+//             } else if (req.body.location) {
+//                 // If user sent a location object
+//                 const loc = typeof req.body.location === "string" ? JSON.parse(req.body.location) : req.body.location;
+//                 if (loc?.type === "Point" && Array.isArray(loc.coordinates)) {
+//                     locObj = loc;
+//                 }
+//             }
+
+
+//             // Update images (if new ones provided)
+//             let images = guesthouse.guestHouseImage;
+//             if (req.files && req.files.length > 0) {
+//                 images = req.files.map(file => file.filename);
+//             }
+
+//             // Parse facilities (if provided)
+//             let facilityIds = guesthouse.facilities;
+//             if (facilities) {
+//                 let facArr = Array.isArray(facilities)
+//                     ? facilities
+//                     : JSON.parse(facilities);
+
+//                 const validFacilityIds = [];
+//                 for (const id of facArr) {
+//                     if (!id) continue;
+//                     const exists = await Facility.findById(id);
+//                     if (exists) validFacilityIds.push(exists._id);
+//                 }
+
+//                 //  Merge old + new facilities and remove duplicates
+//                 const mergedFacilities = new Set([
+//                     ...guesthouse.facilities.map(f => f.toString()),
+//                     ...validFacilityIds.map(f => f.toString())
+//                 ]);
+//                 facilityIds = Array.from(mergedFacilities);
+//             }
+
+//             // Dynamic update object
+//             const updateData = {};
+
+//             if (name?.trim()) updateData.name = name;
+//             if (address?.trim()) updateData.address = address;
+//             if (description?.trim()) updateData.description = description;
+
+//             if (contactNumber && /^\d{7,15}$/.test(contactNumber))
+//                 updateData.contactNumber = contactNumber;
+
+//             if (atolls && mongoose.Types.ObjectId.isValid(atolls))
+//                 updateData.atolls = atolls;
+
+//             if (islands && mongoose.Types.ObjectId.isValid(islands))
+//                 updateData.islands = islands;
+
+//             // Numeric fields — skip if empty or invalid
+//             if (price !== "" && !isNaN(price) && Number(price) > 0)
+//                 updateData.price = Number(price);
+
+//             if (cleaningFee !== "" && !isNaN(cleaningFee) && Number(cleaningFee) >= 0)
+//                 updateData.cleaningFee = Number(cleaningFee);
+
+//             if (
+//                 taxPercent !== "" &&
+//                 !isNaN(taxPercent) &&
+//                 Number(taxPercent) >= 0 &&
+//                 Number(taxPercent) <= 100
+//             )
+//                 updateData.taxPercent = Number(taxPercent);
+
+//             // Location, facilities, and images
+//             if (locObj) updateData.location = locObj;
+
+//             if (facilityIds && facilityIds.length > 0)
+//                 updateData.facilities = facilityIds;
+
+//             if (req.files && req.files.length > 0)
+//                 updateData.guestHouseImage = req.files.map(f => f.filename);
+
+//             // Apply updates safely
+//             guesthouse.set(updateData);
+//             await guesthouse.save();
+
+//             return res.status(200).json({
+//                 success: true,
+//                 message: "Guesthouse updated successfully.",
+//                 data: { guesthouseId: guesthouse._id }
+//             });
+//         }
+
+//         //  Step 3: If guesthouse not found → perform full validation
+//         console.log("[CREATE] No guesthouse found, performing full validation...");
+
+//         // ---- Full Validation for New Creation ---- //
+//         if (!name || name.trim() === "")
+//             return res.status(400).json({ success: false, message: "Guesthouse name is required" });
+
+//         if (!address || address.trim() === "")
+//             return res.status(400).json({ success: false, message: "Address is required" });
+
+//         if (!contactNumber || !/^\d{7,15}$/.test(contactNumber))
+//             return res.status(400).json({ success: false, message: "Valid contact number (7-15 digits) is required" });
+
+//         if (!islands)
+//             return res.status(400).json({ success: false, message: "Island is required" });
+
+//         if (!atolls)
+//             return res.status(400).json({ success: false, message: "Atoll is required" });
+
+//         if (!req.files || req.files.length === 0)
+//             return res.status(400).json({ success: false, message: "At least 1 image is required" });
+
+//         const atoll = await Atoll.findById(atolls);
+//         if (!atoll)
+//             return res.status(404).json({ success: false, message: "Atoll not found" });
+
+//         const island = await Island.find({ atoll: atolls, _id: islands });
+//         if (island.length === 0)
+//             return res.status(404).json({ success: false, message: "No islands found for this atoll" });
+
+//         if (!price || isNaN(price) || price <= 0)
+//             return res.status(400).json({ success: false, message: "Valid price is required" });
+
+//         if (taxPercent != null && (isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100))
+//             return res.status(400).json({ success: false, message: "Tax percent must be between 0 and 100" });
+
+//         if (cleaningFee != null && (isNaN(cleaningFee) || cleaningFee < 0))
+//             return res.status(400).json({ success: false, message: "Cleaning fee must be a positive number" });
+
+//         const images = req.files.map(file => file.filename);
+
+//         // Parse and validate location
+//         let locObj = null;
+//         if (location || req.body.latitude || req.body.longitude) {
+//             let lat = parseFloat(req.body.latitude);
+//             let lng = parseFloat(req.body.longitude);
+//             if (!isNaN(lat) && !isNaN(lng)) {
+//                 locObj = { type: "Point", coordinates: [lng, lat] };
+//             }
+//         }
+
+//         // Validate facilities
+//         let facilityIds = [];
+//         if (facilities) {
+//             let facArr = Array.isArray(facilities) ? facilities : JSON.parse(facilities);
+//             for (const id of facArr) {
+//                 const exists = await Facility.findById(id);
+//                 if (exists) facilityIds.push(exists._id);
+//             }
+//         }
+
+//         // Check duplicate name
+//         const dup = await Guesthouse.findOne({ name });
+//         if (dup)
+//             return res.status(400).json({ success: false, message: "Guesthouse name must be unique" });
+
+//         //  Step 4: Create new guesthouse
+//         const gh = new Guesthouse({
+//             owner: ownerId,
+//             name,
+//             address,
+//             location: locObj,
+//             contactNumber,
+//             description,
+//             price,
+//             guestHouseImage: images,
+//             facilities: facilityIds,
+//             atolls,
+//             islands,
+//             taxPercent,
+//             cleaningFee
+//         });
+
+//         await gh.save();
+
+//         return res.status(201).json({
+//             success: true,
+//             message: "Guesthouse created successfully.",
+//             data: { guesthouseId: gh._id }
+//         });
+
+//     } catch (err) {
+//         console.error("[GUESTHOUSE] Error:", err);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Internal server error while managing guesthouse",
+//             error: err.message,
+//         });
+//     }
+// };
+
 exports.manageGuestHouse = async (req, res) => {
     try {
         const ownerId = req.user._id;
-        const {
+        let {
             name,
             address,
             location,
@@ -36,287 +268,272 @@ exports.manageGuestHouse = async (req, res) => {
             atolls,
             islands,
             cleaningFee,
-            taxPercent
+            taxPercent,
+            latitude,
+            longitude
         } = req.body;
 
         console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
 
-        if (!name || name.trim() === "") {
-            return res.status(400).json({
-                success: false,
-                message: "Guesthouse name is required"
-            });
-        }
+        name = name?.trim() || "";
+        address = address?.trim() || "";
+        description = description?.trim() || "";
+        contactNumber = contactNumber?.trim() || "";
+        atolls = atolls?.trim() || "";
+        islands = islands?.trim() || "";
+        latitude = latitude?.trim() || "";
+        longitude = longitude?.trim() || "";
 
-        if (!address || address.trim() === "") {
-            return res.status(400).json({
-                success: false,
-                message: "Address is required"
-            });
-        }
-
-        if (!contactNumber || contactNumber.trim() === "") {
-            return res.status(400).json({
-                success: false,
-                message: "Contact number is required"
-            });
-        }
-
-        if (!islands || islands.trim() === "") {
-            return res.status(400).json({
-                success: false,
-                message: "islands is required"
-            });
-        }
-
-        if (!atolls || atolls.trim() === "") {
-            return res.status(400).json({
-                success: false,
-                message: "atolls is required"
-            });
-        }
-
-        const atoll = await Atoll.findById(atolls);
-        if (!atoll) {
-            return res.status(404).json({ success: false, message: "Atoll not found" });
-        }
-
-        const island = await Island.find({ atoll: atolls, _id: islands });
-        if (island.length === 0) {
-            return res.status(404).json({ success: false, message: "No islands found for this atoll" });
-        }
-
-        // Only digits and length 7–15
-        if (!/^\d{7,15}$/.test(contactNumber)) {
-            return res.status(400).json({
-                success: false,
-                message: "Contact number must contain 7-15 digits"
-            });
-        }
-
-        if (!price || isNaN(price) || price <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid price is required"
-            });
-        }
-
-        if (taxPercent != null && (isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100)) {
-            return res.status(400).json({
-                success: false,
-                message: "Tax percent must be between 0 and 100"
-            });
-        }
-
-        if (cleaningFee != null && (isNaN(cleaningFee) || cleaningFee < 0)) {
-            return res.status(400).json({
-                success: false,
-                message: "Cleaning fee must be a positive number"
-            });
-        }
-
-        // Validate images
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "At least 1 image is required",
-            });
-        }
-
-        const images = req.files.map(file => file.filename);
-
-        // Parse and validate location
-        // 🔹 Parse and validate location (supports both styles)
-        let locObj = null;
-
-        if (location || req.body.latitude || req.body.longitude) {
-            try {
-                if (typeof location === 'string') {
-                    location = JSON.parse(location);
-                }
-
-                // Case  Form-data style: location[type]=Point & location[coordinates][]=[lng,lat]
-                if (location?.type === 'Point' && Array.isArray(location?.coordinates)) {
-                    if (location.coordinates.length !== 2) {
-                        throw new Error("Coordinates must contain [longitude, latitude]");
-                    }
-                    locObj = location;
-                }
-                // Case: latitude / longitude sent separately
-                else if (req.body.latitude != null && req.body.longitude != null) {
-                    const lat = parseFloat(req.body.latitude);
-                    const lng = parseFloat(req.body.longitude);
-
-                    if (isNaN(lat) || isNaN(lng)) {
-                        throw new Error("Latitude and longitude must be valid numbers");
-                    }
-
-                    locObj = {
-                        type: "Point",
-                        coordinates: [lng, lat] // GeoJSON expects [longitude, latitude]
-                    };
-                } else {
-                    throw new Error("Missing location or latitude/longitude data");
-                }
-            } catch (e) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid location format. Send either { latitude, longitude } or location[type]/location[coordinates][]",
-                    error: e.message
-                });
-            }
-        }
-
-
-        // Facilities validation & ID handling
-        let facilityIds = [];
-
-        if (facilities && facilities.length > 0) {
-            let facArr = [];
-
-            if (Array.isArray(facilities)) {
-                facArr = facilities;
-            } else {
-                try {
-                    facArr = JSON.parse(facilities); // If sent as JSON string
-                } catch (e) {
-                    facArr = facilities.split(',').map(f => f.trim());
-                }
-            }
-
-            // 🔹 Check each facility ID if valid
-            const validFacilityIds = [];
-
-            for (const facId of facArr) {
-                // Ignore empty or malformed IDs
-                if (!facId || facId === "undefined" || facId === "null") continue;
-
-                const facilityExists = await Facility.findById(facId);
-                if (facilityExists) {
-                    validFacilityIds.push(facilityExists._id);
-                }
-            }
-
-            facilityIds = validFacilityIds;
-        }
-
-
-
-
-        // Check if guesthouse already exists for this owner
+        //  Step 1: Check if guesthouse already exists
         let guesthouse = await Guesthouse.findOne({ owner: ownerId });
 
+        //  Step 2: If guesthouse exists → skip validation, only update fields
         if (guesthouse) {
-            // Update existing guesthouse
-            if (name && name !== guesthouse.name) {
-                const dup = await Guesthouse.findOne({ name });
-                if (dup) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Guesthouse name must be unique"
-                    });
+            console.log("[UPDATE] Existing guesthouse found, skipping validation...");
+
+            //  Fix location object handling
+            let locObj = guesthouse.location || null;
+
+            if (latitude && longitude) {
+                const lat = parseFloat(latitude);
+                const lng = parseFloat(longitude);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    locObj = {
+                        type: "Point",
+                        coordinates: [lng, lat],
+                    };
                 }
-                guesthouse.name = name;
+            } else if (location) {
+                try {
+                    const loc = typeof location === "string" ? JSON.parse(location) : location;
+                    if (loc?.type === "Point" && Array.isArray(loc.coordinates)) {
+                        locObj = loc;
+                    }
+                } catch (err) {
+                    console.warn("Invalid location format:", location);
+                }
             }
 
-            guesthouse.address = address || guesthouse.address;
-            guesthouse.location = locObj || guesthouse.location;
-            guesthouse.contactNumber = contactNumber || guesthouse.contactNumber;
-            guesthouse.description = description || guesthouse.description;
-            guesthouse.atolls = atolls || guesthouse.atolls;
-            guesthouse.islands = islands || guesthouse.islands;
-            guesthouse.taxPercent = taxPercent || guesthouse.taxPercent;
-            guesthouse.cleaningFee = cleaningFee || guesthouse.cleaningFee;
-
-            if (price != null) guesthouse.price = price;
-
-            if (facilityIds.length > 0) {
-                guesthouse.facilities = facilityIds;
+            // Update images (if new ones provided)
+            let images = guesthouse.guestHouseImage;
+            if (req.files && req.files.length > 0) {
+                images = req.files.map(file => file.filename);
             }
 
-            guesthouse.guestHouseImage = images; // Replace old images
+            // Parse facilities (if provided)
+            // let facilityIds = guesthouse.facilities;
+            // if (facilities) {
+            //     let facArr = Array.isArray(facilities)
+            //         ? facilities
+            //         : JSON.parse(facilities);
 
+            //     const validFacilityIds = [];
+            //     for (const id of facArr) {
+            //         if (!id) continue;
+            //         const exists = await Facility.findById(id);
+            //         if (exists) validFacilityIds.push(exists._id);
+            //     }
+
+            //     //  Merge old + new facilities and remove duplicates
+            //     const mergedFacilities = new Set([
+            //         ...guesthouse.facilities.map(f => f.toString()),
+            //         ...validFacilityIds.map(f => f.toString())
+            //     ]);
+            //     facilityIds = Array.from(mergedFacilities);
+            // }
+
+            let facilityIds = guesthouse.facilities;
+
+            //  Replace old facilities completely with new ones
+            if (facilities) {
+                let facArr = Array.isArray(facilities)
+                    ? facilities
+                    : JSON.parse(facilities);
+
+                const validFacilityIds = [];
+                for (const id of facArr) {
+                    if (!id) continue;
+                    const exists = await Facility.findById(id);
+                    if (exists) validFacilityIds.push(exists._id);
+                }
+
+                // 🧹 Replace old facilities with new ones (no merge)
+                facilityIds = validFacilityIds;
+            }
+
+
+            // Dynamic update object
+            const updateData = {};
+
+
+            if (name) updateData.name = name;
+            if (address) updateData.address = address;
+            if (description) updateData.description = description;
+
+
+            if (contactNumber && /^\d{7,15}$/.test(contactNumber))
+                updateData.contactNumber = contactNumber;
+
+            if (atolls && mongoose.Types.ObjectId.isValid(atolls))
+                updateData.atolls = atolls;
+
+            if (islands && mongoose.Types.ObjectId.isValid(islands))
+                updateData.islands = islands;
+
+            // Numeric fields — skip if empty or invalid
+            if (price !== "" && !isNaN(price) && Number(price) > 0)
+                updateData.price = Number(price);
+
+            if (cleaningFee !== "" && !isNaN(cleaningFee) && Number(cleaningFee) >= 0)
+                updateData.cleaningFee = Number(cleaningFee);
+
+            if (
+                taxPercent !== "" && !isNaN(taxPercent) && Number(taxPercent) >= 0 && Number(taxPercent) <= 100
+            )
+                updateData.taxPercent = Number(taxPercent);
+
+            //  Location, facilities, and images
+            // if (locObj && locObj.coordinates && locObj.coordinates.length === 2)
+            //     updateData.location = locObj;
+
+            if (locObj && locObj.coordinates?.length === 2)
+                updateData.location = locObj;
+
+            // if (facilityIds && facilityIds.length > 0)
+            //     updateData.facilities = facilityIds;
+
+            if (facilityIds?.length > 0)
+                updateData.facilities = facilityIds;
+
+
+            if (req.files && req.files.length > 0)
+                updateData.guestHouseImage = req.files.map(f => f.filename);
+
+            // Apply updates safely
+            guesthouse.set(updateData);
             await guesthouse.save();
 
-            // const masterAdmin = await Admin.findOne({ role: "admin" });
-            // if (masterAdmin) {
-            //     await createNotification(
-            //         { userId: ownerId, role: "guesthouse" },
-            //         { userId: masterAdmin._id, role: "admin" },
-            //         "Guesthouse updated",
-            //         `Guesthouse "${guesthouse.name}" has updated by its owner.`,
-            //         "system",
-            //     );
-            // } else {
-            //     console.warn("[NOTIFICATION] No master admin found.");
-            // }
+            console.log("[UPDATE SUCCESS] Guesthouse updated successfully with location:", locObj);
 
             return res.status(200).json({
                 success: true,
                 message: "Guesthouse updated successfully.",
-                data: {
-                    guesthouseId: guesthouse._id
-                }
-            });
-
-        } else {
-            //  Create new guesthouse
-            if (!name || !price) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Name and price are required for new guesthouse"
-                });
-            }
-
-            const duplicate = await Guesthouse.findOne({ name });
-            if (duplicate) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Guesthouse name must be unique"
-                });
-            }
-
-            const gh = new Guesthouse({
-                owner: ownerId,
-                name,
-                address,
-                location: locObj,
-                contactNumber,
-                description,
-                price,
-                guestHouseImage: images,
-                facilities: facilityIds,
-                atolls,
-                islands,
-                taxPercent,
-                cleaningFee
-            });
-
-            await gh.save();
-
-            // const masterAdmin = await Admin.findOne({ role: "admin" });
-            // if (masterAdmin) {
-            //     await createNotification(
-            //         { userId: ownerId, role: "guesthouse" },
-            //         { userId: masterAdmin._id, role: "admin" },
-            //         "New Guesthouse Added",
-            //         `New guesthouse "${gh.name}" has been added.`,
-            //         "system",
-            //     );
-            //     console.log(`[NOTIFICATION] Sent: New guesthouse "${gh.name}" added notification to admin.`);
-            // }
-            // else {
-            //     console.warn("[NOTIFICATION] No master admin found.");
-            // }
-
-            return res.status(201).json({
-                success: true,
-                message: "Guesthouse submitted successfully.",
-                data: {
-                    guesthouseId: gh._id
-                }
+                data: { guesthouseId: guesthouse._id }
             });
         }
+
+        //   Step 3: If guesthouse not found → perform full validation
+        // console.log("[CREATE] No guesthouse found, performing full validation...");
+
+        // // ---- Full Validation for New Creation ---- //
+        // if (!name || name.trim() === "")
+        //     return res.status(400).json({ success: false, message: "Guesthouse name is required" });
+
+        // if (!address || address.trim() === "")
+        //     return res.status(400).json({ success: false, message: "Address is required" });
+
+        // if (!contactNumber || !/^\d{7,15}$/.test(contactNumber))
+        //     return res.status(400).json({ success: false, message: "Valid contact number (7-15 digits) is required" });
+
+        // if (!islands)
+        //     return res.status(400).json({ success: false, message: "Island is required" });
+
+        // if (!atolls)
+        //     return res.status(400).json({ success: false, message: "Atoll is required" });
+
+        // if (!req.files || req.files.length === 0)
+        //     return res.status(400).json({ success: false, message: "At least 1 image is required" });
+
+        // const atoll = await Atoll.findById(atolls);
+        // if (!atoll)
+        //     return res.status(404).json({ success: false, message: "Atoll not found" });
+
+        // const island = await Island.find({ atoll: atolls, _id: islands });
+        // if (island.length === 0)
+        //     return res.status(404).json({ success: false, message: "No islands found for this atoll" });
+
+        // if (!price || isNaN(price) || price <= 0)
+        //     return res.status(400).json({ success: false, message: "Valid price is required" });
+
+        if (!name) return res.status(400).json({ success: false, message: "Guesthouse name is required" });
+        if (!address) return res.status(400).json({ success: false, message: "Address is required" });
+        if (!contactNumber || !/^\d{7,15}$/.test(contactNumber))
+            return res.status(400).json({ success: false, message: "Valid contact number is required" });
+        if (!islands) return res.status(400).json({ success: false, message: "Island is required" });
+        if (!atolls) return res.status(400).json({ success: false, message: "Atoll is required" });
+        if (!req.files?.length)
+            return res.status(400).json({ success: false, message: "At least 1 image is required" });
+
+        const atoll = await Atoll.findById(atolls);
+        if (!atoll) return res.status(404).json({ success: false, message: "Atoll not found" });
+
+        const island = await Island.find({ atoll: atolls, _id: islands });
+        if (island.length === 0)
+            return res.status(404).json({ success: false, message: "No islands found for this atoll" });
+
+        if (!price || isNaN(price) || price <= 0)
+            return res.status(400).json({ success: false, message: "Valid price is required" });
+
+        if (taxPercent != null && (isNaN(taxPercent) || taxPercent < 0 || taxPercent > 100))
+            return res.status(400).json({ success: false, message: "Tax percent must be between 0 and 100" });
+
+        if (cleaningFee != null && (isNaN(cleaningFee) || cleaningFee < 0))
+            return res.status(400).json({ success: false, message: "Cleaning fee must be a positive number" });
+
+        const images = req.files.map(file => file.filename);
+
+        //  Parse and validate location for new guesthouse
+        let locObj = null;
+        if (latitude && longitude) {
+            const lat = parseFloat(latitude);
+            const lng = parseFloat(longitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                locObj = { type: "Point", coordinates: [lng, lat] };
+            }
+        }
+
+        // Validate facilities
+        let facilityIds = [];
+        if (facilities) {
+            let facArr = Array.isArray(facilities) ? facilities : JSON.parse(facilities);
+            for (const id of facArr) {
+                const exists = await Facility.findById(id);
+                if (exists) facilityIds.push(exists._id);
+            }
+        }
+
+        // Check duplicate name
+        const dup = await Guesthouse.findOne({ name });
+        if (dup)
+            return res.status(400).json({ success: false, message: "Guesthouse name must be unique" });
+
+        //  Step 4: Create new guesthouse
+        const gh = new Guesthouse({
+            owner: ownerId,
+            name,
+            address,
+            location: locObj,
+            contactNumber,
+            description,
+            price,
+            guestHouseImage: images,
+            facilities: facilityIds,
+            atolls,
+            islands,
+            taxPercent,
+            cleaningFee
+        });
+
+        await gh.save();
+
+        console.log("[CREATE SUCCESS] Guesthouse created successfully with location:", locObj);
+
+        return res.status(201).json({
+            success: true,
+            message: "Guesthouse created successfully.",
+            data: { guesthouseId: gh._id }
+        });
+
     } catch (err) {
         console.error("[GUESTHOUSE] Error:", err);
         return res.status(500).json({
@@ -326,6 +543,7 @@ exports.manageGuestHouse = async (req, res) => {
         });
     }
 };
+
 
 exports.getMyGuesthouse = async (req, res) => {
     try {
@@ -346,7 +564,7 @@ exports.getMyGuesthouse = async (req, res) => {
                 select: "name -_id",
             })
             .select(
-                "name address contactNumber description guestHouseImage status price cleaningFee taxPercent atolls islands facilities createdAt"
+                "name address location  contactNumber description guestHouseImage status price cleaningFee taxPercent atolls islands facilities createdAt"
             )
             .lean();
 
@@ -385,7 +603,6 @@ exports.getMyGuesthouse = async (req, res) => {
         });
     }
 };
-
 
 // -------------------------------- ROOM --------------------------------
 
@@ -662,7 +879,7 @@ exports.getAllRooms = async (req, res) => {
                 price_per_month: room.priceMonthly,
                 bed: room.bedType?.name || null,
                 facilities: (room.facilities || []).map(f => f.name),
-                image: roomImage // ✅ single image only
+                image: roomImage //  single image only
             });
         });
 
@@ -684,7 +901,6 @@ exports.getAllRooms = async (req, res) => {
         });
     }
 };
-
 
 exports.getRoomById = async (req, res) => {
     try {
@@ -758,7 +974,6 @@ exports.getRoomById = async (req, res) => {
     }
 };
 
-
 exports.updateRoom = async (req, res) => {
     try {
         const { roomId } = req.body;
@@ -791,7 +1006,7 @@ exports.updateRoom = async (req, res) => {
             availability,
         } = req.body;
 
-        // ✅ Simple validation: update only if not empty
+        //  Simple validation: update only if not empty
         if (roomCategory && roomCategory.trim() !== "") room.roomCategory = roomCategory;
         if (bedType && bedType.trim() !== "") room.bedType = bedType;
         if (capacity && capacity !== "") room.capacity = capacity;
@@ -800,23 +1015,29 @@ exports.updateRoom = async (req, res) => {
         if (priceWeekly && priceWeekly !== "") room.priceWeekly = priceWeekly;
         if (priceMonthly && priceMonthly !== "") room.priceMonthly = priceMonthly;
 
-        // ✅ Facilities (only update if valid non-empty array)
+
+        //  Facilities (merge old + new, don't delete old)
         if (facilities && facilities.length > 0) {
-            if (typeof facilities === "string") {
-                try {
-                    const parsedFacilities = JSON.parse(facilities);
-                    if (Array.isArray(parsedFacilities) && parsedFacilities.length > 0) {
-                        room.facilities = parsedFacilities;
-                    }
-                } catch (e) {
-                    console.error("Invalid facilities format:", e.message);
+            try {
+                // Parse if it's a string
+                const parsedFacilities =
+                    typeof facilities === "string" ? JSON.parse(facilities) : facilities;
+
+                if (Array.isArray(parsedFacilities) && parsedFacilities.length > 0) {
+                    //  Merge old + new facilities and remove duplicates
+                    const mergedFacilities = new Set([
+                        ...(room.facilities || []).map(f => f.toString()),
+                        ...parsedFacilities.map(f => f.toString())
+                    ]);
+                    room.facilities = Array.from(mergedFacilities);
                 }
-            } else if (Array.isArray(facilities) && facilities.length > 0) {
-                room.facilities = facilities;
+            } catch (err) {
+                console.error("Invalid facilities format:", err.message);
             }
         }
 
-        // ✅ Availability (update only if not empty)
+
+        //  Availability (update only if not empty)
         if (availability && availability.length > 0) {
             try {
                 const parsedAvailability =
@@ -825,6 +1046,7 @@ exports.updateRoom = async (req, res) => {
                         : availability;
 
                 if (Array.isArray(parsedAvailability) && parsedAvailability.length > 0) {
+                    // Format new dates
                     const formattedAvailability = parsedAvailability.map((slot) => {
                         const dateValue =
                             typeof slot === "string"
@@ -832,7 +1054,18 @@ exports.updateRoom = async (req, res) => {
                                 : new Date(slot.date || slot);
                         return { date: dateValue, isAvailable: true };
                     });
-                    room.availability = formattedAvailability;
+
+                    const existingDates = room.availability.map(a => new Date(a.date).toISOString().split("T")[0]);
+                    const newEntries = [];
+
+                    formattedAvailability.forEach(a => {
+                        const dateStr = new Date(a.date).toISOString().split("T")[0];
+                        if (!existingDates.includes(dateStr)) {
+                            newEntries.push(a);
+                        }
+                    });
+
+                    room.availability = [...room.availability, ...newEntries];
                 }
             } catch (err) {
                 return res.status(400).json({
@@ -843,7 +1076,8 @@ exports.updateRoom = async (req, res) => {
             }
         }
 
-        // ✅ Handle new images (replace only if uploaded)
+
+        //  Handle new images (replace only if uploaded)
         if (req.files && req.files.length > 0) {
             room.photos = req.files.map(file => file.filename);
         }
@@ -865,7 +1099,6 @@ exports.updateRoom = async (req, res) => {
         });
     }
 };
-
 
 exports.activeInActive = async (req, res) => {
     try {
@@ -1317,79 +1550,6 @@ exports.downloadInvoice = async (req, res) => {
 
 // -------------------------------- Review ----------------------------------
 
-// exports.getAllReviews = async (req, res) => {
-//     try {
-//         if (!req.user || !req.user.id) {
-//             return res.status(400).json({ success: false, message: "User not authenticated." });
-//         }
-
-//         const guesthouseOwner = await User.findById(req.user.id);
-//         if (!guesthouseOwner) {
-//             return res.status(404).json({ success: false, message: "Guesthouse owner not found." });
-//         }
-
-//         const guesthouse = await Guesthouse.findOne({ owner: guesthouseOwner._id })
-
-//         // Get all reviews of this guesthouse
-//         const reviews = await Review.find({ guesthouse: guesthouse._id })
-//             .populate("customer", "name profileImage")
-//             .select("rating comment createdAt")
-//             .lean()
-//             .sort({ createdAt: -1 }); // sorted by newest first
-
-//         if (!reviews || reviews.length === 0) {
-//             return res.status(200).json({
-//                 success: true,
-//                 message: `No reviews found for guesthouse ${guestHouseId}`,
-//                 count: 0,
-//                 averageRating: 0,
-//                 ratingDistribution: { Star5: 0, Star4: 0, Star3: 0, Star2: 0, Star1: 0 },
-//                 reviews: [],
-//                 serverTime: new Date().toISOString()
-//             });
-//         }
-
-//         // Calculate average rating
-//         const totalRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0);
-//         const avgRating = totalRating / reviews.length;
-
-//         // Calculate star distribution
-//         const ratingDistribution = { Star5: 0, Star4: 0, Star3: 0, Star2: 0, Star1: 0 };
-//         reviews.forEach(r => {
-//             const star = Math.round(r.rating);
-//             if (star >= 1 && star <= 5) ratingDistribution[`Star${star}`]++;
-//         });
-
-//         // Format reviews
-//         const formattedReviews = reviews.map(r => ({
-//             userName: r.customer?.name || "Anonymous",
-//             profileImage: r.customer?.profileImage
-//                 ? `${BASE_URL}/uploads/profileImage/${r.customer.profileImage}`
-//                 : `${BASE_URL}/uploads/profileImage/default.png`,
-//             rating: r.rating,
-//             date: r.createdAt ? r.createdAt.toISOString().split("T")[0] : null,
-//             comment: r.comment || ""
-//         }));
-
-//         return res.status(200).json({
-//             success: true,
-//             message: "Reviews fetched successfully.",
-//             count: reviews.length,
-//             averageRating: parseFloat(avgRating.toFixed(1)),
-//             ratingDistribution,
-//             reviews: formattedReviews
-//         });
-
-//     } catch (err) {
-//         return res.status(500).json({
-//             success: false,
-//             message: "Error fetching guesthouse reviews.",
-//             error: err.message,
-//             serverTime: new Date().toISOString()
-//         });
-//     }
-// };
-
 exports.getReviewById = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -1505,8 +1665,7 @@ exports.getAllNotification = async (req, res) => {
             error: error.message
         });
     }
-};
-
+}
 
 exports.deleteNotification = async (req, res) => {
     try {
@@ -1558,7 +1717,6 @@ exports.deleteNotification = async (req, res) => {
         });
     }
 };
-
 
 exports.deleteAllNotifications = async (req, res) => {
     try {
@@ -1630,8 +1788,92 @@ exports.countNewNotifications = async (req, res) => {
 };
 
 //__________________________________-- Payment history
-exports.payoutHistory = async (req, res) =>{
-    
-}
+
+
+exports.payoutHistory = async (req, res) => {
+    try {
+        const ownerId = req.user.id;
+
+        //  Find the guesthouse for this owner
+        const guesthouse = await Guesthouse.findOne({ owner: ownerId });
+        if (!guesthouse) {
+            return res.status(400).json({
+                success: false,
+                message: "No guesthouse found for logged-in user"
+            });
+        }
+
+        const guestHouseId = guesthouse._id;
+
+        //  Find all bookings for this guesthouse
+        const bookings = await Booking.find({ guesthouse: guestHouseId }).select("_id");
+
+        if (!bookings.length) {
+            return res.status(200).json({
+                success: true,
+                message: "No bookings found for this guesthouse",
+                data: []
+            });
+        }
+
+        const bookingIds = bookings.map(b => b._id);
+
+        //  Find payments for those bookings
+        const payments = await Payment.find({ booking: { $in: bookingIds } })
+            .populate({
+                path: "booking",
+                select: "customer",
+                populate: {
+                    path: "customer",
+                    select: "name"
+                }
+            })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (!payments.length) {
+            return res.status(200).json({
+                success: true,
+                message: "No payments found for this guesthouse",
+                data: []
+            });
+        }
+
+        // Format with Indian time
+        const formatted = payments.map(p => ({
+            _id: p._id,
+            requestId: p.requestId,
+            amount: p.amount,
+            status: p.paymentStatus,
+            customerName: p.booking?.customer?.name || "N/A",
+            paymentDate: p.paymentDate
+                ? moment(p.paymentDate).tz("Asia/Kolkata").format("DD-MM-YYYY")
+                : moment(p.createdAt).tz("Asia/Kolkata").format("DD-MM-YYYY")
+        }));
+
+        //  Calculate total
+        const totalAmount = formatted
+            .filter(p => p.status === "paid")
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+
+        //  Send response
+        return res.status(200).json({
+            success: true,
+            message: "Payout history fetched successfully",
+            totalPayments: formatted.length,
+            totalAmount,
+            data: formatted
+        });
+
+    } catch (error) {
+        console.error("Error fetching payout history:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching payout history",
+            error: error.message
+        });
+    }
+};
 
 

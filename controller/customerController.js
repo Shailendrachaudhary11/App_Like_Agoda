@@ -197,7 +197,7 @@ exports.getAllGuestHouses = async (req, res) => {
                 gh.taxPercent = gh.taxPercent ? parseFloat(gh.taxPercent) : 0;
 
                 try {
-                    // 👇 Ye aggregation reviews ka count aur average dono nikalta hai
+                    //  Ye aggregation reviews ka count aur average dono nikalta hai
                     const reviewStats = await Review.aggregate([
                         { $match: { guesthouse: gh.id } },
                         {
@@ -210,16 +210,16 @@ exports.getAllGuestHouses = async (req, res) => {
                     ]);
 
                     if (reviewStats.length > 0) {
-                        gh.stars = reviewStats[0].averageRating
+                        gh.rating = reviewStats[0].averageRating
                             ? reviewStats[0].averageRating.toFixed(1).toString()
                             : "0.0";
                         gh.reviews = reviewStats[0].totalReviews;
                     } else {
-                        gh.stars = "0.0";
+                        gh.rating = "0.0";
                         gh.reviews = 0;
                     }
                 } catch (error) {
-                    gh.stars = 0.0;
+                    gh.rating = 0.0;
                     gh.reviews = 0;
                 }
 
@@ -231,9 +231,14 @@ exports.getAllGuestHouses = async (req, res) => {
 
         logger.info("Fetched %d guesthouses successfully.", guestHousesWithUrls.length);
 
-        if (sort === "stars") {
-            guestHousesWithUrls.sort((a, b) => parseFloat(b.stars) - parseFloat(a.stars));
-        }
+        // Always sort by highest rating first (descending order)
+        guestHousesWithUrls.sort((a, b) => {
+            const ratingDiff = parseFloat(b.rating) - parseFloat(a.rating);
+            if (ratingDiff !== 0) return ratingDiff;
+
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+
 
         return res.status(200).json({
             success: true,
@@ -292,7 +297,7 @@ exports.getGuestHouseById = async (req, res) => {
             guestHouseObj.guestHouseImage = [];
         }
 
-        guestHouseObj.stars = guestHouseObj.stars != null ? parseFloat(guestHouseObj.stars).toFixed(1) : "0.0";
+        // guestHouseObj.stars = guestHouseObj.stars != null ? parseFloat(guestHouseObj.stars).toFixed(1) : "0.0";
         guestHouseObj.cleaningFee = guestHouseObj.cleaningFee ? parseFloat(guestHouseObj.cleaningFee) : 0;
         guestHouseObj.taxPercent = guestHouseObj.taxPercent ? parseFloat(guestHouseObj.taxPercent) : 0;
         // Convert atolls, islands, facilities to proper format
@@ -334,13 +339,14 @@ exports.getGuestHouseById = async (req, res) => {
 
         reviewScore = parseFloat(reviewScore.toFixed(1));
 
-        guestHouseObj.stars = reviewScore ? reviewScore.toFixed(1).toString() : "0.0";
         guestHouseObj.cleaningFee = guestHouseObj.cleaningFee ? parseFloat(guestHouseObj.cleaningFee) : 0;
         guestHouseObj.taxPercent = guestHouseObj.taxPercent ? parseFloat(guestHouseObj.taxPercent) : 0;
 
-        guestHouseObj.rating = Number(rating);
+        // guestHouseObj.rating = Number(rating);
+        guestHouseObj.rating = String(rating);
+
         guestHouseObj.reviewsCount = reviewsCount;
-        guestHouseObj.reviewScore = reviewScore;
+        // guestHouseObj.reviewScore = reviewScore;
         guestHouseObj.reviewsText = reviewsText;
 
         logger.info(`[GuestHouse] Fetched successfully`);
@@ -867,7 +873,7 @@ exports.getAllPaymentTypes = async (req, res) => {
                 image: `${BASE_URL}/uploads/payment/card.png`
             },
             {
-                name: "PayPal",
+                name: "Paypal",
                 image: `${BASE_URL}/uploads/payment/paypal.png`
             },
             {
@@ -2628,6 +2634,24 @@ exports.getWallet = async (req, res) => {
 
 //_____________________________ Report and Issue
 
+exports.getAllGuesthouseName = async (req, res) => {
+    try {
+        const guesthouses = await Guesthouse.find({ status: "active" }).select("name");
+
+        res.status(200).json({
+            success: true,
+            message: "Successfully fetch all guesthouse",
+            data: guesthouses
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "error while fetching all guesthouses names",
+            error: error
+        })
+    }
+}
+
 exports.report = async (req, res) => {
     try {
         const customerId = req.user.id;
@@ -2637,7 +2661,7 @@ exports.report = async (req, res) => {
         if (!issueType || !description || !guesthouse) {
             return res.status(400).json({
                 success: false,
-                message: "All fields (issueType, description, name, email, phone, guesthouse) are required",
+                message: "All fields (issueType, description, guesthouse) are required",
             });
         }
 

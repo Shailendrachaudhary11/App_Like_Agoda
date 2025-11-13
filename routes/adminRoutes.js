@@ -22,7 +22,7 @@ router.post("/reset-password", verifyToken, adminController.resetPassword);
 // ============== Dashboard ===================
 router.post("/dashboard", auth(["admin"]), adminController.getDashboardData);
 router.post("/report", auth(["admin"]), adminController.getMonthlyReports);
-router.post("/revenue-distribution", auth(["admin"]), adminController.getRevenueDistribution);
+// router.post("/revenue-distribution", auth(["admin"]), adminController.getRevenueDistribution);
 
 // ===== GUESTHOUSES =====
 router.post("/guesthouses/list", auth(["admin"]), adminController.getAllGuestHouses);
@@ -65,6 +65,7 @@ router.post("/bookings/list/upcoming", auth(["admin"]), adminController.upcoming
 router.post("/bookings/list/cancelled", auth(["admin"]), adminController.getCancelBookings);
 router.post("/bookings/view", auth(["admin"]), adminController.getBookingById);
 router.post("/bookings/list/pending", auth(["admin"]), adminController.pendingBooking);
+router.post("/bookings/delete", auth(["admin"]), adminController.deleteBooking);
 
 
 // ===== PROMOS =====
@@ -117,9 +118,13 @@ router.post('/bedType/delete', auth(["admin"]), adminController.deleteBedType);
 
 // _____________-MANAGE PAYMENT
 router.post("/payments", auth(["admin"]), adminController.getAllPayments);
+router.post("/payments/delete", auth(["admin"]), adminController.deletePayment);
 router.post("/payments/details", auth(["admin"]), adminController.getPaymentDetails);
 
 //_______________ MANAGE REPORT
-router.post("/reports", auth(["admin"]), adminController.getReports)
+router.post("/reports", auth(["admin"]), adminController.getReports);
+router.post("/reports/delete", auth(["admin"]), adminController.deleteReport);
+router.post("/reports/status", auth(["admin"]), adminController.changeStatusReport);
+router.post("/reports/view", auth(["admin"]), adminController.viewReport);
 
 module.exports = router;
