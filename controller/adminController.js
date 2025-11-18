@@ -11,7 +11,6 @@ const createNotification = require("../utils/notificationHelper");
 const sendEmail = require("../utils/sendEmail");
 const Facility = require("../models/Facility");
 const Island = require("../models/Island");
-// const BedType = require("../models/BedType");
 const Review = require("../models/review");
 const Payment = require("../models/Payment");
 const Atoll = require("../models/Atoll");
@@ -20,17 +19,26 @@ const BedType = require('../models/BedType');
 const mongoose = require('mongoose');
 const Issue = require("../models/Issue");
 const moment = require("moment-timezone");
+const PayoutRequest = require("../models/PayoutRequest");
 
 const BASE_URL = process.env.BASE_URL;
 
-// ________________________________________________________
 
-function toIST(dateString) {
-    const date = new Date(dateString);
-    // Add IST offset (5 hours 30 minutes)
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    return new Date(date.getTime() + istOffset);
+// function capitalize(str) {
+//     if (!str) return "";
+//     return str.charAt(0).toUpperCase() + str.slice(1);
+// }
+
+function capitalize(name) {
+    if (!name) return "";
+
+    return name
+        .trim()
+        .split(/\s+/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(" ");
 }
+
 
 
 exports.register = async (req, res) => {
@@ -91,6 +99,104 @@ exports.register = async (req, res) => {
     }
 };
 
+exports.addUser = async (req, res) => {
+    try {
+        let { name, email, password, role, phone } = req.body;
+
+        // Trim input
+        name = name?.trim();
+        email = email?.trim();
+        role = role?.trim();
+        phone = phone?.trim();
+
+        // Name validation
+        if (!name || name.length < 3 || !/^[A-Za-z\s]+$/.test(name)) {
+            return res.status(400).json({
+                success: false,
+                message: "Name must be at least 3 characters and contain only alphabets."
+            });
+        }
+
+        // Email validation
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid email address."
+            });
+        }
+
+        // Phone validation (optional)
+        if (!phone && !/^\d{10}$/.test(phone)) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number must be 10 digits."
+            });
+        }
+
+        // Role validation
+        const validRoles = ["Manager", "Supervisor"];
+        if (!role || !validRoles.includes(capitalize(role))) {
+            return res.status(400).json({
+                success: false,
+                message: "Role must be Manager or Supervisor."
+            });
+        }
+
+        // Check email exists
+        const emailExist = await AdminUser.findOne({ email });
+        if (emailExist) {
+            return res.status(400).json({
+                success: false,
+                message: "Email already exists."
+            });
+        }
+
+        // Capitalize name & role
+        name = capitalize(name);
+        role = capitalize(role);
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Image
+        let adminImage = null;
+        if (req.file) {
+            adminImage = req.file.filename;
+        }
+
+        // Save user
+        const newAdmin = new AdminUser({
+            name,
+            email,
+            phone,
+            password: hashedPassword,
+            role,
+            adminImage
+        });
+
+        await newAdmin.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Admin user created successfully",
+            data: newAdmin
+        });
+
+    } catch (error) {
+        console.log("Add User Error:", error);
+        // Catch mongoose validation errors
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map(val => val.message);
+            return res.status(400).json({ success: false, message: messages.join(', ') });
+        }
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while add user by admin",
+            error: error.message
+        });
+    }
+};
+
 exports.login = async (req, res) => {
     try {
 
@@ -138,16 +244,12 @@ exports.login = async (req, res) => {
 
         // Generate JWT
         const token = jwt.sign(
-            { id: adminUser._id, role: "admin", name: adminUser.name },
+            { id: adminUser._id, role: adminUser.role, name: adminUser.name },
             process.env.JWT_SECRET,
-            { expiresIn: "30d" }
+            { expiresIn: "1d" }
         );
 
         console.log("Admin logged in successfully:", adminUser._id);
-
-        adminUser.adminImage = adminUser.adminImage
-            ? `${process.env.BASE_URL || ""}/uploads/adminImage/${adminUser.adminImage}`
-            : null;
 
         return res.status(200).json({
             success: true,
@@ -158,14 +260,14 @@ exports.login = async (req, res) => {
                 name: adminUser.name,
                 email: adminUser.email,
                 phone: adminUser.phone,
-                adminImage: adminUser.adminImage
+                role: adminUser.role
             }
         });
     } catch (error) {
         console.error("Error in admin login:", error.message);
         return res.status(500).json({
             success: false,
-            message: "error while admin login.",
+            message: "Error while login admin users",
             error: error.message
         });
     }
@@ -247,6 +349,16 @@ exports.updateProfile = async (req, res) => {
                     data: null,
                 });
             }
+
+            const nameRegex = /^[A-Za-z\s]+$/;
+            if (!nameRegex.test(name)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name must contain only letters (A–Z, a–z)",
+                    data: null,
+                });
+            }
+
             user.name = name.charAt(0).toUpperCase() + name.slice(1);
         }
 
@@ -523,6 +635,288 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
+//__________________
+
+// exports.getAllSupervisors = async (req, res) => {
+//     try {
+//         console.log(req.user.role);
+//         let supervisors = await AdminUser.find({ role: 'Supervisor' }).select("name email phone adminImage status");
+
+//         if (!supervisors || supervisors.length === 0) {
+//             return res.status(404).json({ success: false, message: 'No supervisors found' });
+//         }
+
+//         // Add full URL for adminImage
+//         supervisors = supervisors.map((admin) => {
+//             return {
+//                 ...admin._doc, // spread all other fields
+//                 adminImage: admin.adminImage
+//                     ? `${BASE_URL}/uploads/adminImage/${admin.adminImage}`
+//                     : null
+//             };
+//         });
+
+//         return res.status(200).json({
+//             success: true,
+//             count: supervisors.length,
+//             data: supervisors
+//         });
+//     } catch (error) {
+//         console.error(error);
+//         return res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+//     }
+// };
+
+exports.getAllSupervisorsMananger = async (req, res) => {
+    try {
+        const { role } = req.body; // expecting "Supervisor" or "Manager"
+
+        if (!role) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide a role (Supervisor or Manager)"
+            });
+        }
+
+        let users = await AdminUser.find({ role })
+            .select("name email phone adminImage status role");
+
+        if (!users || users.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No ${role}s found`
+            });
+        }
+
+        // Add image URL
+        users = users.map((user) => {
+            return {
+                ...user._doc,
+                adminImage: user.adminImage
+                    ? `${BASE_URL}/uploads/adminImage/${user.adminImage}`
+                    : null
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            count: users.length,
+            role: role,
+            data: users
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: error.message
+        });
+    }
+};
+
+exports.getUserByRoleAndId = async (req, res) => {
+    try {
+        const { userId, role } = req.body;
+
+        if (!userId || !role) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide userId and role"
+            });
+        }
+
+        const user = await AdminUser.findOne({ _id: userId, role })
+            .select("-password -otp -otpExpiry -createdAt -updatedAt -__v");
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: `${role} not found`
+            });
+        }
+
+        // Add full image URL
+        if (user.adminImage) {
+            user.adminImage = `${BASE_URL}/uploads/adminImage/${user.adminImage}`;
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: user
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: error.message
+        });
+    }
+};
+
+
+exports.activeInactiveUserByRole = async (req, res) => {
+    try {
+        const { userId, role } = req.body;
+
+        if (!userId || !role) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide userId and role."
+            });
+        }
+
+        let user = await AdminUser.findOne({ _id: userId, role });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: `${role} not found.`
+            });
+        }
+
+        // Toggle status
+        user.status = user.status === "Active" ? "Inactive" : "Active";
+        await user.save();
+
+        // Add image URL
+        if (user.adminImage && !user.adminImage.startsWith("http")) {
+            user.adminImage = `${BASE_URL}/uploads/adminImage/${user.adminImage}`;
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `${role} ${user.status} successfully.`,
+            data: {
+                id: user._id,
+                role: user.role,
+                status: user.status,
+                adminImage: user.adminImage
+            }
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update status.",
+            error: err.message
+        });
+    }
+};
+
+
+
+exports.updateUserByRole = async (req, res) => {
+    try {
+        let { userId, role, name, email, phone } = req.body;
+
+        if (!userId || !role) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide userId and role."
+            });
+        }
+
+        // Find user based on ID + ROLE
+        let user = await AdminUser.findOne({ _id: userId, role });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: `${role} not found`
+            });
+        }
+
+        // ---- VALIDATIONS ----
+        if (name && (name.length < 3 || name.length > 50 || !/^[A-Za-z\s]+$/.test(name))) {
+            return res.status(400).json({
+                success: false,
+                message: "Name must be 3–50 characters long & only contain letters."
+            });
+        }
+
+        if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid email format."
+            });
+        }
+
+        if (phone && !/^\d{10}$/.test(phone)) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number must be 10 digits."
+            });
+        }
+
+        // ---- UPDATE FIELDS ----
+        if (name) name = capitalize(name);
+        if (name) user.name = name.trim();
+        if (email) user.email = email.trim();
+        if (phone) user.phone = phone.trim();
+
+        // ---- UPDATE IMAGE ----
+        if (req.file) {
+            user.adminImage = req.file.filename;
+        }
+
+        await user.save({ validateBeforeSave: false });
+
+        return res.status(200).json({
+            success: true,
+            message: `${role} updated successfully`,
+            data: user
+        });
+
+    } catch (error) {
+        console.error("Error updating user by role:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: error.message
+        });
+    }
+};
+
+exports.deleteUserByRole = async (req, res) => {
+    try {
+        const { userId, role } = req.body;
+
+        if (!userId || !role) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide userId and role."
+            });
+        }
+
+        const user = await AdminUser.findOneAndDelete({ _id: userId, role });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: `${role} not found`
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `${role} deleted successfully`
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: error.message
+        });
+    }
+};
+
+
 
 // ___________________________________________________
 
@@ -659,81 +1053,6 @@ exports.getMonthlyReports = async (req, res) => {
     }
 };
 
-// exports.getRevenueDistribution = async (req, res) => {
-//     try {
-//         const { startDate, endDate } = req.body; // frontend se aa rahe hain (optional)
-
-//         let matchStage = {}; // default: saare bookings
-//         if (startDate && endDate) {
-//             const start = new Date(startDate);
-//             const end = new Date(endDate);
-
-//             // validation
-//             if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-//                 return res.status(400).json({
-//                     success: false,
-//                     message: "Invalid startDate or endDate format"
-//                 });
-//             }
-
-//             if (end < start) {
-//                 return res.status(400).json({
-//                     success: false,
-//                     message: "endDate must be greater than or equal to startDate"
-//                 });
-//             }
-
-//             // filter bookings by date range
-//             matchStage = {
-//                 createdAt: { $gte: start, $lte: end }
-//             };
-//         }
-
-//         // aggregation pipeline
-//         const result = await Booking.aggregate([
-//             { $match: matchStage },
-//             {
-//                 $group: {
-//                     _id: null,
-//                     bookings: { $sum: 1 },
-//                     cancellations: {
-//                         $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] }
-//                     },
-//                     revenue: {
-//                         $sum: {
-//                             $cond: [
-//                                 { $in: ["$status", ["confirmed", "completed"]] },
-//                                 "$finalAmount",
-//                                 0
-//                             ]
-//                         }
-//                     }
-//                 }
-//             }
-//         ]);
-
-//         const data = result[0] || { bookings: 0, cancellations: 0, revenue: 0 };
-
-//         return res.status(200).json({
-//             success: true,
-//             message: startDate && endDate
-//                 ? `Revenue distribution from ${startDate} to ${endDate}`
-//                 : "Revenue distribution data (all time)",
-//             data
-//         });
-
-//     } catch (error) {
-//         console.error("Error in getRevenueDistribution:", error);
-//         return res.status(500).json({
-//             success: false,
-//             message: "Internal server error while fetching booking distribution",
-//             error: error.message
-//         });
-//     }
-// };
-
-
-// ________________________________________________________
 
 exports.getAllGuestOwner = async (req, res) => {
     try {
@@ -796,6 +1115,10 @@ exports.getGuestOwnerById = async (req, res) => {
         guestHouseOwner.profileImage = guestHouseOwner.profileImage
             ? `${process.env.BASE_URL || ""}/uploads/profileImage/${guestHouseOwner.profileImage}`
             : null;
+
+        if (guestHouseOwner.status) {
+            guestHouseOwner.status = guestHouseOwner.status.charAt(0).toUpperCase() + guestHouseOwner.status.slice(1);
+        }
 
         return res.status(200).json({
             success: true,
@@ -988,15 +1311,17 @@ exports.deleteOwner = async (req, res) => {
 //     }
 // };
 
+
 exports.getAllGuestHouses = async (req, res) => {
     try {
-        const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-        // Fetch guesthouses
+        // const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+
         const guestHouses = await Guesthouse.find()
             .select("-location -owner -description -facilities -__v -createdAt -isFavourite")
-            .populate("atolls", "name")    // only fetch atoll name
+            .populate("atolls", "name")
             .populate("islands", "name")
-            .lean(); // lean() for better performance
+            .sort({ createdAt: -1 }) // lateset first
+            .lean();
 
         if (!guestHouses.length) {
             return res.status(200).json({
@@ -1025,6 +1350,9 @@ exports.getAllGuestHouses = async (req, res) => {
                 } catch {
                     gh.reviews = 0;
                 }
+
+                gh.name = gh.name.charAt(0).toUpperCase() + gh.name.slice(1);
+
 
                 // Replace atoll/island with their names only
                 gh.atolls = gh.atolls?.name || null;
@@ -1146,6 +1474,7 @@ exports.getAllGuestHouses = async (req, res) => {
 //     }
 // };
 
+
 exports.getGuestHousesById = async (req, res) => {
     try {
         const { guesthouseId } = req.body;
@@ -1233,6 +1562,10 @@ exports.getGuestHousesById = async (req, res) => {
         guestHouseObj.reviewsCount = reviewsCount;
         // guestHouseObj.reviewScore = reviewScore;
         guestHouseObj.reviewsText = reviewsText;
+
+        guestHouseObj.name = guestHouseObj.name.charAt(0).toUpperCase() + guestHouseObj.name.slice(1);
+        guestHouseObj.status = guestHouseObj.status.charAt(0).toUpperCase() + guestHouseObj.status.slice(1);
+
 
         guestHouseObj.ownerDetails = owner
             ? {
@@ -2010,8 +2343,6 @@ exports.getAllBooking = async (req, res) => {
 
         bookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-
-
         const formattedBookings = bookings.map((booking) => {
             const guesthouse = booking.guesthouse || {};
             let guestHouseImg = "";
@@ -2036,7 +2367,9 @@ exports.getAllBooking = async (req, res) => {
                 id: booking._id,
                 guesthouse: guesthouse._id || null,
                 guestHouseImg: guestHouseImg,
-                guestHouseName: guesthouse.name || "",
+                guestHouseName: guesthouse.name
+                    ? guesthouse.name.charAt(0).toUpperCase() + guesthouse.name.slice(1)
+                    : "",
                 guestHouseAddress: guesthouse.address || "",
                 checkIn: booking.checkIn
                     ? new Date(booking.checkIn).toISOString().split("T")[0]
@@ -2135,10 +2468,15 @@ exports.getBookingById = async (req, res) => {
         const paymentDetails = payment
             ? {
                 customerName: customer.name || "",
+                customerName: customer?.name
+                    ? customer.name.trim().charAt(0).toUpperCase() + customer.name.trim().slice(1)
+                    : "",
                 customerProfileImage: `${BASE_URL}/uploads/profileImage/${customer.profileImage}`,
                 customerContact: customer.phone || "",
                 paymentMethod: payment.paymentMethod,
-                paymentStatus: payment.paymentStatus,
+                paymentStatus: payment.paymentStatus
+                    ? payment.paymentStatus.charAt(0).toUpperCase() + payment.paymentStatus.slice(1)
+                    : "",
                 paymentDate: payment.paymentDate
                     ? new Date(payment.paymentDate).toISOString().split("T")[0]
                     : null,
@@ -2148,7 +2486,7 @@ exports.getBookingById = async (req, res) => {
                 customerProfileImage: `${BASE_URL}/uploads/profileImage/${customer.profileImage}`,
                 customerContact: customer.phone || "",
                 paymentMethod: "N/A",
-                paymentStatus: "unpaid",
+                paymentStatus: "N/A",
                 paymentDate: "N/A",
             };
 
@@ -3030,7 +3368,6 @@ exports.deleteAllNotification = async (req, res) => {
     }
 };
 
-
 //__________________________________ Add values
 
 exports.getAllAtolls = async (req, res) => {
@@ -3078,8 +3415,10 @@ exports.createAtoll = async (req, res) => {
             });
         }
 
+        const trimmedName = name.trim();
         const nameRegex = /^[A-Za-z\s]+$/;
-        if (!nameRegex.test(name.trim())) {
+
+        if (!nameRegex.test(trimmedName)) {
             return res.status(400).json({
                 success: false,
                 message: "Name should contain only letters (A–Z, a–z).",
@@ -3093,8 +3432,11 @@ exports.createAtoll = async (req, res) => {
             });
         }
 
+        //  FIRST LETTER CAPITAL
+        const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1).toLowerCase();
+
         const existing = await Atoll.findOne({
-            name: { $regex: new RegExp(`^${name.trim()}$`, "i") } // "i" = case-insensitive
+            name: { $regex: new RegExp(`^${formattedName}$`, "i") }
         });
 
         if (existing) {
@@ -3103,9 +3445,10 @@ exports.createAtoll = async (req, res) => {
                 message: "Atoll with this name already exists",
             });
         }
+
         const atoll = new Atoll({
-            name: name.trim(),
-            atollImage: `${req.file.filename}` // store relative path
+            name: formattedName,
+            atollImage: req.file.filename
         });
 
         await atoll.save();
@@ -3214,7 +3557,7 @@ exports.editAtoll = async (req, res) => {
     try {
         const { atollId, name } = req.body;
 
-        // Validation: atollId required
+        // 🔹 Validate atollId
         if (!atollId) {
             return res.status(400).json({
                 success: false,
@@ -3228,7 +3571,9 @@ exports.editAtoll = async (req, res) => {
             });
         }
 
-        // If name provided, validate it
+        // 🔹 Validate name (if provided)
+        let formattedName = null;
+
         if (name !== undefined) {
             if (typeof name !== "string") {
                 return res.status(400).json({
@@ -3236,7 +3581,9 @@ exports.editAtoll = async (req, res) => {
                     message: "Name must be a string",
                 });
             }
+
             const trimmedName = name.trim();
+
             if (trimmedName.length < 3) {
                 return res.status(400).json({
                     success: false,
@@ -3250,8 +3597,14 @@ exports.editAtoll = async (req, res) => {
                     message: "Name must contain only letters.",
                 });
             }
+
+            // ⭐ FIRST LETTER CAPITAL
+            formattedName =
+                trimmedName.charAt(0).toUpperCase() +
+                trimmedName.slice(1).toLowerCase();
         }
 
+        // 🔹 Find atoll
         const atoll = await Atoll.findById(atollId);
         if (!atoll) {
             return res.status(404).json({
@@ -3260,12 +3613,25 @@ exports.editAtoll = async (req, res) => {
             });
         }
 
-        // Update fields
-        if (name) {
-            atoll.name = name.trim();
+        // 🔹 Duplicate Name Check (exclude current)
+        if (formattedName) {
+            const existing = await Atoll.findOne({
+                _id: { $ne: atollId },
+                name: { $regex: new RegExp(`^${formattedName}$`, "i") }
+            });
+
+            if (existing) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Another Atoll with this name already exists",
+                });
+            }
+
+            atoll.name = formattedName;
         }
+
+        // 🔹 Image update
         if (req.file) {
-            // Optional: you could validate file type/extensions
             atoll.atollImage = req.file.filename;
         }
 
@@ -3280,7 +3646,6 @@ exports.editAtoll = async (req, res) => {
     } catch (error) {
         console.error("Error while editing atoll:", error);
 
-        // If duplicate key error (unique) from mongoose-unique-validator
         if (error.name === 'ValidationError') {
             const messages = Object.values(error.errors).map(err => err.message);
             return res.status(400).json({
@@ -3290,7 +3655,7 @@ exports.editAtoll = async (req, res) => {
             });
         }
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Error while editing atoll",
             error: error.message,
@@ -3361,20 +3726,27 @@ exports.createIslands = async (req, res) => {
                 message: "Name must be a string."
             });
         }
-        const trimmedName = name.trim();
+
+        let trimmedName = name.trim();
+
         if (trimmedName.length < 3) {
             return res.status(400).json({
                 success: false,
                 message: "Name must be at least 3 characters long."
             });
         }
-        // Regex: only letters A-Z/a-z, no spaces, numbers or special chars
+
         if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
             return res.status(400).json({
                 success: false,
                 message: "Name must contain only letters."
             });
         }
+
+        // 🌟 Capitalize: First letter uppercase + rest lowercase
+        trimmedName =
+            trimmedName.charAt(0).toUpperCase() +
+            trimmedName.slice(1).toLowerCase();
 
         if (!mongoose.Types.ObjectId.isValid(atollId)) {
             return res.status(400).json({
@@ -3392,8 +3764,11 @@ exports.createIslands = async (req, res) => {
             });
         }
 
-        // 4. Check for duplicate island name under same or globally (depending on requirement)
-        const existingIsland = await Island.findOne({ name: trimmedName });
+        // 4. Case-insensitive duplicate check
+        const existingIsland = await Island.findOne({
+            name: { $regex: new RegExp(`^${trimmedName}$`, "i") }
+        });
+
         if (existingIsland) {
             return res.status(400).json({
                 success: false,
@@ -3415,10 +3790,10 @@ exports.createIslands = async (req, res) => {
             message: "Island successfully added.",
             data: newIsland
         });
+
     } catch (err) {
         console.error("[Island] createIsland error:", err);
 
-        // Handle mongoose validation errors if any
         if (err.name === 'ValidationError') {
             const errors = Object.values(err.errors).map(e => e.message);
             return res.status(400).json({
@@ -3435,7 +3810,6 @@ exports.createIslands = async (req, res) => {
         });
     }
 };
-
 
 exports.activeInActiveIsland = async (req, res) => {
     try {
@@ -3519,7 +3893,6 @@ exports.editIsland = async (req, res) => {
     try {
         const { islandId, name } = req.body;
 
-        // 🔹 Island ID required
         if (!islandId) {
             return res.status(400).json({
                 success: false,
@@ -3535,30 +3908,34 @@ exports.editIsland = async (req, res) => {
             });
         }
 
-        // 🔹 Name validation (letters only, optional)
         if (name && name.trim() !== "") {
-            const nameRegex = /^[A-Za-z\s]+$/; // letters and spaces only
-            if (!nameRegex.test(name.trim())) {
+            const trimmedName = name.trim();
+            const nameRegex = /^[A-Za-z\s]+$/;
+
+            if (!nameRegex.test(trimmedName)) {
                 return res.status(400).json({
                     success: false,
                     message: "Name should contain only letters (A–Z, a–z).",
                 });
             }
-        }
 
-        const existingIsland = await Island.findOne({
-            _id: { $ne: islandId },
-            name: { $regex: new RegExp(`^${name.trim()}$`, "i") }
-        });
+            // ⭐ FIRST LETTER CAPITAL
+            const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1).toLowerCase();
 
-        if (existingIsland) {
-            return res.status(400).json({
-                success: false,
-                message: "Island with this name already exists.",
+            const existingIsland = await Island.findOne({
+                _id: { $ne: islandId },
+                name: { $regex: new RegExp(`^${formattedName}$`, "i") }
             });
-        }
 
-        island.name = name.trim();
+            if (existingIsland) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Island with this name already exists.",
+                });
+            }
+
+            island.name = formattedName;
+        }
 
         const updatedIsland = await island.save();
 
@@ -3578,7 +3955,9 @@ exports.editIsland = async (req, res) => {
     }
 };
 
+
 //________________________ FACILITY___________________
+
 exports.getAllfacilities = async (req, res) => {
     try {
         const facilities = await Facility.find()
@@ -3586,11 +3965,17 @@ exports.getAllfacilities = async (req, res) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        const modifiedAtolls = facilities.map(facilitie => ({
-            id: facilitie._id,
-            name: facilitie.name,
-            status: facilitie.status
-        }));
+        const modifiedAtolls = facilities.map(facilitie => {
+            const name = facilitie.name
+                ? facilitie.name.charAt(0).toUpperCase() + facilitie.name.slice(1)
+                : "";
+
+            return {
+                id: facilitie._id,
+                name: name,
+                status: facilitie.status
+            };
+        });
 
         res.status(200).json({
             success: true,
@@ -3631,19 +4016,23 @@ exports.updateFacility = async (req, res) => {
 
         // 3. If name provided then validate it
         if (name !== undefined) {
+
             if (typeof name !== 'string' || name.trim() === '') {
                 return res.status(400).json({
                     success: false,
                     message: "Facility name must be a non-empty string"
                 });
             }
-            const normalized = name.trim();
+
+            let normalized = name.trim();
+
             if (normalized.length < 3) {
                 return res.status(400).json({
                     success: false,
                     message: "Facility name must be at least 3 characters long"
                 });
             }
+
             if (!/^[A-Za-z\s]+$/.test(normalized)) {
                 return res.status(400).json({
                     success: false,
@@ -3651,8 +4040,17 @@ exports.updateFacility = async (req, res) => {
                 });
             }
 
+            // 🌟 Capitalize: First letter uppercase + rest lowercase
+            normalized =
+                normalized.charAt(0).toUpperCase() +
+                normalized.slice(1).toLowerCase();
+
             // Duplicate check (ignore current facility)
-            const existing = await Facility.findOne({ name: normalized, _id: { $ne: facilityId } });
+            const existing = await Facility.findOne({
+                name: { $regex: new RegExp(`^${normalized}$`, "i") },
+                _id: { $ne: facilityId }
+            });
+
             if (existing) {
                 return res.status(400).json({
                     success: false,
@@ -3663,7 +4061,7 @@ exports.updateFacility = async (req, res) => {
             facility.name = normalized;
         }
 
-        // 4. Update lastModified or similar if you have
+        // 4. Update timestamp
         facility.updatedAt = new Date();
 
         const updated = await facility.save();
@@ -3683,7 +4081,6 @@ exports.updateFacility = async (req, res) => {
         });
     }
 };
-
 
 exports.activeInactiveFacility = async (req, res) => {
     try {
@@ -3726,7 +4123,6 @@ exports.activeInactiveFacility = async (req, res) => {
     }
 };
 
-
 exports.createFacility = async (req, res) => {
     try {
         const { name } = req.body;
@@ -3739,8 +4135,9 @@ exports.createFacility = async (req, res) => {
             });
         }
 
-        // 2. Normalise & length check
-        const normalized = name.trim();
+        let normalized = name.trim();
+
+        // 2. Length check
         if (normalized.length < 3) {
             return res.status(400).json({
                 success: false,
@@ -3748,7 +4145,7 @@ exports.createFacility = async (req, res) => {
             });
         }
 
-        // 3. Character check (only letters and spaces)
+        // 3. Letters only
         if (!/^[A-Za-z\s]+$/.test(normalized)) {
             return res.status(400).json({
                 success: false,
@@ -3756,8 +4153,14 @@ exports.createFacility = async (req, res) => {
             });
         }
 
-        // 4. Duplicate check
-        const existing = await Facility.findOne({ name: normalized });
+        // 🌟 4. Capitalize First Letter + Lowercase Rest
+        normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+
+        // 5. Duplicate check (case-insensitive)
+        const existing = await Facility.findOne({
+            name: { $regex: new RegExp(`^${normalized}$`, 'i') }
+        });
+
         if (existing) {
             return res.status(400).json({
                 success: false,
@@ -3765,7 +4168,7 @@ exports.createFacility = async (req, res) => {
             });
         }
 
-        // 5. Create and save
+        // 6. Save
         const facility = new Facility({
             name: normalized,
             status: "active"
@@ -3830,7 +4233,7 @@ exports.deleteFacility = async (req, res) => {
 };
 
 
-//  Create Room Category
+//_________________________________Create Room Category_____________________
 
 exports.createRoomCategory = async (req, res) => {
     try {
@@ -3841,6 +4244,10 @@ exports.createRoomCategory = async (req, res) => {
         }
 
         const trimmedName = name.trim();
+
+        trimmedName =
+            trimmedName.charAt(0).toUpperCase() +
+            trimmedName.slice(1).toLowerCase();
 
         //  Validate name pattern (must start with a capital letter, min 3 chars)
 
@@ -3951,21 +4358,30 @@ exports.updateRoomCategory = async (req, res) => {
             });
         }
 
-        //  Name validation (letters only)
-        if (name && name.trim() !== "") {
-            const nameRegex = /^[A-Za-z\s]+$/;
-            if (!nameRegex.test(name.trim())) {
+        //  If name provided → validate + capitalize
+        if (name && name.trim()) {
+            let trimmedName = name.trim();
+
+            //  First letter capital, rest lowercase
+            trimmedName =
+                trimmedName.charAt(0).toUpperCase() +
+                trimmedName.slice(1).toLowerCase();
+
+            //  Validation
+            const nameRegex = /^[A-Za-z\s]{3,}$/;
+            if (!nameRegex.test(trimmedName)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Name should contain only letters (A–Z, a–z).",
+                    message: "Name must contain only letters and be at least 3 characters long.",
                 });
             }
 
-            //  Case-insensitive duplicate check (exclude current category)
+            //  Duplicate check (exclude current)
             const existing = await RoomCategory.findOne({
                 _id: { $ne: roomCatId },
-                name: { $regex: new RegExp(`^${name.trim()}$`, "i") }
+                name: { $regex: new RegExp(`^${trimmedName}$`, "i") }
             });
+
             if (existing) {
                 return res.status(400).json({
                     success: false,
@@ -3973,9 +4389,8 @@ exports.updateRoomCategory = async (req, res) => {
                 });
             }
 
-            roomCategory.name = name.trim();
+            roomCategory.name = trimmedName;
         }
-
 
         const updated = await roomCategory.save();
 
@@ -4049,7 +4464,7 @@ exports.deleteRoomCategory = async (req, res) => {
     }
 };
 
-//__________________________________
+//__________________________________ADD BED TYPE_______________________________________________
 
 exports.addBedType = async (req, res) => {
     try {
@@ -4070,8 +4485,14 @@ exports.addBedType = async (req, res) => {
             });
         }
 
-        // Check for duplicate
-        const existing = await BedType.findOne({ name: { $regex: new RegExp(`^${name.trim()}$`, "i") } });
+        // Format first letter capital
+        const formattedName =
+            name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase();
+
+        // Check for duplicate (case-insensitive)
+        const existing = await BedType.findOne({
+            name: { $regex: new RegExp(`^${formattedName}$`, "i") }
+        });
         if (existing) {
             return res.status(400).json({
                 success: false,
@@ -4079,7 +4500,9 @@ exports.addBedType = async (req, res) => {
             });
         }
 
-        const newBedType = await BedType.create({ name });
+        // Save formatted name
+        const newBedType = await BedType.create({ name: formattedName });
+
         res.status(201).json({
             success: true,
             message: "Bed Type added successfully",
@@ -4123,7 +4546,7 @@ exports.editBedType = async (req, res) => {
             });
         }
 
-        // 🔹 Name validation
+        // 🔹 Name validation basic
         if (!name || name.trim().length < 3) {
             return res.status(400).json({
                 success: false,
@@ -4131,7 +4554,10 @@ exports.editBedType = async (req, res) => {
             });
         }
 
-        const formattedName = name.trim();
+        // 🔹 Trim + Capitalize
+        let formattedName =
+            name.trim().charAt(0).toUpperCase() +
+            name.trim().slice(1).toLowerCase();
 
         // 🔹 Letters-only check
         const nameRegex = /^[A-Za-z\s]+$/;
@@ -4178,7 +4604,8 @@ exports.editBedType = async (req, res) => {
     }
 };
 
-exports.changeStatus = async (req, res) => {
+
+exports.changeStatusBedType = async (req, res) => {
     try {
         const { bedTypeId } = req.body;
 
@@ -4218,7 +4645,7 @@ exports.deleteBedType = async (req, res) => {
     }
 };
 
-//__________________________ MANAGE PAYMENT
+//__________________________ MANAGE PAYMENT______________________________
 
 exports.getAllPayments = async (req, res) => {
     try {
@@ -4235,18 +4662,26 @@ exports.getAllPayments = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Payment list fetched successfully",
-            data: payments.map(p => ({
-                _id: p._id,
-                guesthouse: p.booking?.guesthouse?.name || "N/A",
-                customer: p.booking?.customer?.name || "N/A",
-                amount: p.amount,
-                paymentMethod: p.paymentMethod,
-                paymentStatus: p.paymentStatus,
-                paymentDate: p.paymentDate,
-                checkIn: p.booking?.checkIn,
-                checkOut: p.booking?.checkOut,
-                nights: p.booking?.nights,
-            }))
+            data: payments.map(p => {
+
+                // Capitalize paymentStatus
+                const status = p.paymentStatus
+                    ? p.paymentStatus.charAt(0).toUpperCase() + p.paymentStatus.slice(1)
+                    : "N/A";
+
+                return {
+                    _id: p._id,
+                    guesthouse: p.booking?.guesthouse?.name || "N/A",
+                    customer: p.booking?.customer?.name || "N/A",
+                    amount: p.amount,
+                    paymentMethod: p.paymentMethod,
+                    paymentStatus: status,
+                    paymentDate: p.paymentDate,
+                    checkIn: p.booking?.checkIn,
+                    checkOut: p.booking?.checkOut,
+                    nights: p.booking?.nights,
+                };
+            })
         });
     } catch (error) {
         console.error("Error fetching payments:", error);
@@ -4338,7 +4773,9 @@ exports.getPaymentDetails = async (req, res) => {
                     _id: payment._id,
                     amount: payment.amount,
                     paymentMethod: payment.paymentMethod,
-                    paymentStatus: payment.paymentStatus,
+                    paymentStatus: payment.paymentStatus
+                        ? payment.paymentStatus.charAt(0).toUpperCase() + payment.paymentStatus.slice(1)
+                        : "",
                     paymentDate: payment.paymentDate
                 },
                 booking: {
@@ -4353,6 +4790,8 @@ exports.getPaymentDetails = async (req, res) => {
                     finalAmount: booking.finalAmount,
                     reason: booking.reason,
                     status: booking.status
+                        ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1)
+                        : "",
                 },
                 customer: {
                     _id: customer._id,
@@ -4387,10 +4826,15 @@ exports.getPaymentDetails = async (req, res) => {
 exports.getIssueTypes = async (req, res) => {
     try {
         const issueTypes = [
-            "App Crash",
-            "Payment Issue",
-            "Booking Issue",
-            "slow Performance",
+            "Booking Related Issue",
+            "Payment / Refund Issue",
+            "Room Issue",
+            "Staff Behaviour",
+            "Check-in / Check-out Issue",
+            "Amenities / Service Issue",
+            "Fake Listing / Misleading Information",
+            "Cancellation Issue",
+            "Safety / Security Issue",
             "Other"
         ];
 
@@ -4400,6 +4844,7 @@ exports.getIssueTypes = async (req, res) => {
             count: issueTypes.length,
             data: issueTypes
         });
+
     } catch (error) {
         console.error("[Issue] getIssueTypes error:", error);
         return res.status(500).json({
@@ -4612,5 +5057,113 @@ exports.deleteReport = async (req, res) => {
     }
 };
 
+// Manage Payouts
 
+exports.getPayouts = async (req, res) => {
+    try {
+        const payouts = await PayoutRequest.find()
+            .populate("guesthouse", "name contactNumber")
+            .sort({ createdAt: -1 })
+            .lean();
 
+        // If no payouts exist
+        if (!payouts || payouts.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "No payout requests found",
+                total: 0,
+                data: []
+            });
+        }
+
+        const formatted = payouts.map(p => ({
+            id: p._id,
+            payoutId: p.payoutId,  // fallback
+            guesthouseName: p.guesthouse?.name || "N/A",
+            guesthousePhone: p.guesthouse?.contactNumber || "N/A",
+            paymentCurrency: "MVR",
+            amount: p.amount,
+            status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+            requestedDate: moment(p.createdAt).tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm A"),
+            actionDate: moment(p.updatedAt).tz("Asia/Kolkata").format("DD-MM-YYYY hh:mm A"),
+        }))
+
+        return res.status(200).json({
+            success: true,
+            message: "Successfully fetched all payout requests",
+            total: payouts.length,
+            data: formatted
+        });
+
+    } catch (error) {
+        console.error("Error fetching payouts:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while fetching payouts",
+            error: error.message
+        });
+    }
+};
+
+exports.changeStatusPayout = async (req, res) => {
+    try {
+        const { payoutId, status } = req.body;
+
+        if (!payoutId || !status) {
+            return res.status(400).json({
+                success: false,
+                message: "payoutId and status required"
+            });
+        }
+
+        const payout = await PayoutRequest.findById(payoutId);
+
+        if (!payout) {
+            return res.status(404).json({
+                success: false,
+                message: "Payout not found"
+            });
+        }
+
+        // Restriction logic
+        if (payout.status === "Approved" && status === "Rejected") {
+            return res.status(400).json({
+                success: false,
+                message: "Already Approved — Cannot change to Rejected"
+            });
+        }
+
+        if (payout.status === "Rejected" && status === "Approved") {
+            return res.status(400).json({
+                success: false,
+                message: "Already Rejected — Cannot change to Approved"
+            });
+        }
+
+        // Same status blocking
+        if (payout.status === status) {
+            return res.status(400).json({
+                success: false,
+                message: `Already ${status}`
+            });
+        }
+
+        payout.status = status;
+        payout.updatedAt = new Date();
+        await payout.save();
+
+        return res.status(200).json({
+            success: true,
+            message: `Payout ${status} successfully`,
+            data: payout
+        });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while updating status of payout."
+        });
+    }
+}

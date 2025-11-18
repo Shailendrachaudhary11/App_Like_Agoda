@@ -24,6 +24,7 @@ const getRemainingTime = require("../utils/remainingTime");
 const Atoll = require("../models/Atoll");
 const Issue = require("../models/Issue");
 const mongoose = require('mongoose');
+const moment = require("moment-timezone");
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -1853,7 +1854,7 @@ exports.getReviewByGuestHouse = async (req, res) => {
     }
 };
 
-// _______________________ PROMOS
+// _______________________ PROMOS _______________________________________________
 
 exports.getAllPromos = async (req, res) => {
     try {
@@ -2535,25 +2536,60 @@ exports.getAllCards = async (req, res) => {
 };
 
 //___________________________________ WALLET _____________________________________
+
 exports.addWallet = async (req, res) => {
     try {
         const customerId = req.user.id;
+
         const { amount } = req.body;
 
-        //  Validate amount
-        if (!amount || isNaN(amount) || amount <= 0) {
+        if (amount === undefined || amount === null) {
             return res.status(400).json({
                 success: false,
-                message: "Valid amount is required"
+                message: "Amount is required"
             });
         }
+
+        // Check valid number
+        if (isNaN(amount)) {
+            return res.status(400).json({
+                success: false,
+                message: "Amount must be a valid number"
+            });
+        }
+
+
+        const amt = Number(amount);
+
+        if (!Number.isInteger(amt)) {
+            return res.status(400).json({
+                success: false,
+                message: "Decimal amount not allowed. Please enter a whole number."
+            });
+        }
+
+        if (amt <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Amount must be greater than 0"
+            });
+        }
+
+        // MAX LIMIT (like real wallet)
+        if (amt > 50000) {  // 10 Lakh
+            return res.status(400).json({
+                success: false,
+                message: "Amount exceeds maximum limit (50000)"
+            });
+        }
+
 
         //  Find wallet
         let wallet = await Wallet.findOne({ user: customerId });
 
         //  Create transaction
         const transaction = {
-            amount,
+            amount: amt,
             type: 'credit',
             transactionId: `TRANS${Date.now()}`,
             date: new Date()
@@ -2563,11 +2599,11 @@ exports.addWallet = async (req, res) => {
         if (!wallet) {
             wallet = new Wallet({
                 user: customerId,
-                balance: amount,
+                balance: amt,
                 transactions: [transaction]
             });
         } else {
-            wallet.balance += amount;
+            wallet.balance += amt;
             wallet.transactions.push(transaction);
             wallet.updatedAt = new Date();
         }
@@ -2610,9 +2646,12 @@ exports.getWallet = async (req, res) => {
         }
 
         // Ensure sorting works even if date is string
-        const sortedTransactions = [...wallet.transactions].sort((a, b) => {
-            return new Date(b.date) - new Date(a.date);
-        });
+        const sortedTransactions = [...wallet.transactions]
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .map(tx => ({
+                ...tx.toObject(),
+                date: moment(tx.date).tz("Asia/Kolkata").format("DD-MM-YYYY HH:mm:ss")
+            }));
 
         return res.status(200).json({
             success: true,

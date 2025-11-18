@@ -2,18 +2,19 @@ const User = require("../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
-const createNotification = require("../utils/notificationHelper");
-const Admin = require("../models/adminUser")
+// const createNotification = require("../utils/notificationHelper");
+// const Admin = require("../models/adminUser")
+const TokenBlacklist = require("../models/TokenBlacklist");
 
 exports.register = async (req, res) => {
     try {
         let { name, email, phone, password, confirmPassword, role, address } = req.body;
 
         //Required fields
-        if (!name || !email || !phone || !password) {
+        if (!name || !email || !phone || !password || !role) {
             return res.status(400).json({
                 success: false,
-                message: "Name, Email, Password, and Phone are required."
+                message: "Name, Email, Password, role and phone are required."
             });
         }
 
@@ -62,7 +63,7 @@ exports.register = async (req, res) => {
             name: name.trim().charAt(0).toUpperCase() + name.trim().slice(1),
             email,
             phone,
-            address: address?.trim() || null,
+            address: address ? address.trim().charAt(0).toUpperCase() + address.trime.slice(1) : "",
             password: hashedPassword,
             role: userRole,
             profileImage: null,
@@ -177,7 +178,7 @@ exports.login = async (req, res) => {
         const token = jwt.sign(
             { id: user._id, role: user.role, email: user.email },
             process.env.JWT_SECRET,
-            { expiresIn: "20d" }
+            { expiresIn: "1d" }
         );
 
         //mat profile image URL
@@ -208,6 +209,45 @@ exports.login = async (req, res) => {
             success: false,
             statusCode: 500,
             message: "Internal server error during login.",
+        });
+    }
+};
+
+exports.logout = async (req, res) => {
+    try {
+        const token = req.token; // middleware me store kiya hoga
+
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: "Token not found"
+            });
+        }
+
+        // Token decode karo (verify NAHI karna)
+        const decoded = jwt.decode(token);
+
+        if (!decoded || !decoded.exp) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid token"
+            });
+        }
+
+        const expiresAt = new Date(decoded.exp * 1000);
+
+        await TokenBlacklist.create({ token, expiresAt });
+
+        return res.status(200).json({
+            success: true,
+            message: "Logout successful"
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Error while logging out",
+            error: error.message
         });
     }
 };
@@ -254,115 +294,240 @@ exports.getMyProfile = async (req, res) => {
     }
 };
 
+// exports.updateProfile = async (req, res) => {
+//     try {
+//         let user = await User.findById(req.user.id);
+//         if (!user) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "User not found",
+//                 data: null,
+//             });
+//         }
+
+//         let { name, email, phone, profileImage, address } = req.body || {};
+
+
+//         //ate name if provided
+//         if (name) {
+//             name = name.toString().trim();
+//             if (name.length < 4) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Name must be at least 4 characters long",
+//                     data: null,
+//                 });
+//             }
+//             user.name = name.charAt(0).toUpperCase() + name.slice(1);
+//         }
+
+//         //ate email if provided
+//         if (email) {
+//             email = email.toString().trim().toLowerCase();
+
+//             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//             if (!emailRegex.test(email)) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Invalid email format",
+//                     data: null,
+//                 });
+//             }
+
+//             //ck if email already exists for another user
+//             const existingEmail = await User.findOne({
+//                 email,
+//                 _id: { $ne: req.user._id }
+//             });
+//             if (existingEmail) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Email already in use by another account",
+//                     data: null,
+//                 });
+//             }
+
+//             user.email = email;
+//         }
+
+//         //ate phone if provided
+//         if (phone) {
+//             phone = phone.toString().trim();
+
+//             const phoneRegex = /^[0-9]{10}$/;
+//             if (!phoneRegex.test(phone)) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Phone number must be a valid 10-digit number",
+//                     data: null,
+//                 });
+//             }
+
+//             //ck if phone already exists for another user
+//             const existingPhone = await User.findOne({
+//                 phone,
+//                 _id: { $ne: req.user._id }
+//             });
+//             if (existingPhone) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Phone number already in use by another account",
+//                     data: null,
+//                 });
+//             }
+
+//             user.phone = phone;
+//         }
+
+//         //ate profile image if uploaded
+//         if (req.file) {
+//             user.profileImage = req.file.filename;
+//         }
+
+//         if (address) {
+//             user.address = address.trim().charAt(0).toUpperCase() + address.trim().slice(1);
+//         }
+
+//         await user.save();
+
+
+//         console.log("Profile updated successfully:", user._id);
+
+//         return res.status(200).json({
+//             success: true,
+//             message: "Profile updated successfully."
+//         });
+
+//     } catch (err) {
+//         console.error("[PROFILE] Error updating profile:", err);
+
+//         return res.status(500).json({
+//             success: false,
+//             message: "Failed to update profile.",
+//             error: err.message,
+//         });
+//     }
+// };
+
 exports.updateProfile = async (req, res) => {
     try {
-        let user = await User.findById(req.user.id);
-        if (!user) {
-            return res.status(404).json({
+        //  Get current user
+        const userId = req.user?.id; // ensure your auth middleware sets req.user.id
+        if (!userId) {
+            return res.status(401).json({
                 success: false,
-                message: "User not found",
-                data: null,
+                message: "Unauthorized: User ID missing from token."
             });
         }
 
-        let { name, email, phone, profileImage, address } = req.body || {};
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
 
+        //  Destructure fields
+        let { name, email, phone, address } = req.body || {};
 
-        //ate name if provided
+        //  Update name if provided
         if (name) {
+            name = name.toString().trim();
             if (name.length < 4) {
                 return res.status(400).json({
                     success: false,
-                    message: "Name must be at least 4 characters long",
-                    data: null,
+                    message: "Name must be at least 4 characters long."
                 });
             }
             user.name = name.charAt(0).toUpperCase() + name.slice(1);
         }
 
-        //ate email if provided
+        //  Update email if provided
         if (email) {
             email = email.toString().trim().toLowerCase();
-
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid email format",
-                    data: null,
+                    message: "Invalid email format."
                 });
             }
 
-            //ck if email already exists for another user
             const existingEmail = await User.findOne({
                 email,
-                _id: { $ne: req.user._id }
+                _id: { $ne: userId }
             });
             if (existingEmail) {
                 return res.status(400).json({
                     success: false,
-                    message: "Email already in use by another account",
-                    data: null,
+                    message: "Email already in use by another account."
                 });
             }
-
             user.email = email;
         }
 
-        //ate phone if provided
+        //  Update phone if provided
         if (phone) {
             phone = phone.toString().trim();
-
             const phoneRegex = /^[0-9]{10}$/;
             if (!phoneRegex.test(phone)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Phone number must be a valid 10-digit number",
-                    data: null,
+                    message: "Phone number must be a valid 10-digit number."
                 });
             }
 
-            //ck if phone already exists for another user
             const existingPhone = await User.findOne({
                 phone,
-                _id: { $ne: req.user._id }
+                _id: { $ne: userId }
             });
             if (existingPhone) {
                 return res.status(400).json({
                     success: false,
-                    message: "Phone number already in use by another account",
-                    data: null,
+                    message: "Phone number already in use by another account."
                 });
             }
-
             user.phone = phone;
         }
 
-        //ate profile image if uploaded
+        //  Update address if provided
+        if (address) {
+            address = address.toString().trim();
+            if (address.length > 0) {
+                user.address = address.charAt(0).toUpperCase() + address.slice(1);
+            }
+        }
+
+        //  Update profile image if uploaded
         if (req.file) {
             user.profileImage = req.file.filename;
         }
 
-        if (address) {
-            user.address = address.trim();
-        }
+        //  Save changes
         await user.save();
-
-
-        console.log("Profile updated successfully:", user._id);
 
         return res.status(200).json({
             success: true,
-            message: "Profile updated successfully."
+            message: "Profile updated successfully.",
+            data: {
+                userId: user._id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                address: user.address,
+                profileImage: user.profileImage
+                    ? `${process.env.BASE_URL || ""}/uploads/profileImage/${user.profileImage}`
+                    : null
+            }
         });
 
     } catch (err) {
         console.error("[PROFILE] Error updating profile:", err);
-
         return res.status(500).json({
             success: false,
             message: "Failed to update profile.",
-            error: err.message,
+            error: err.message
         });
     }
 };

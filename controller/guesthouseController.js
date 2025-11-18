@@ -17,9 +17,51 @@ const Atoll = require("../models/Atoll");
 const Island = require("../models/Island");
 const moment = require("moment-timezone");
 const mongoose = require("mongoose");
+const PayoutRequest = require("../models/PayoutRequest")
 
 
 const BASE_URL = process.env.BASE_URL;
+
+const calculateWalletBalance = async (guesthouseId) => {
+
+    // 1. Total Earnings from Paid Payments
+    const bookings = await Booking.find({ guesthouse: guesthouseId }).select("_id");
+    if (!bookings.length) return 0;
+
+    const bookingIds = bookings.map(b => b._id);
+
+    const payments = await Payment.find({
+        booking: { $in: bookingIds },
+        paymentStatus: "paid"
+    });
+
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+
+    // 2. Total Approved Payout Requests
+    const approvedPayouts = await PayoutRequest.find({
+        guesthouse: guesthouseId,
+        status: "Approved"
+    });
+
+    const totalApproved = approvedPayouts.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+
+    // 3. Total Pending Payout Requests  (Yeh Pahle Minus Nahi Ho Raha Tha)
+    const pendingPayouts = await PayoutRequest.find({
+        guesthouse: guesthouseId,
+        status: "Pending"
+    });
+
+    const totalPending = pendingPayouts.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+
+    // ⭐ Final Wallet = Paid - (Pending + Approved)
+    return totalPaid - (totalPending + totalApproved);
+};
+
+
+
 
 
 // -------------------------------- GUESTHOUSE --------------------------------
@@ -275,8 +317,10 @@ exports.manageGuestHouse = async (req, res) => {
 
         console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
 
-        name = name?.trim() || "";
-        address = address?.trim() || "";
+        name = (name?.trim() || "");
+        name = name.charAt(0).toUpperCase() + name.slice(1);
+        address = (address?.trim() || "");
+        address = address.charAt(0).toUpperCase() + address.slice(1);
         description = description?.trim() || "";
         contactNumber = contactNumber?.trim() || "";
         atolls = atolls?.trim() || "";
@@ -1235,7 +1279,7 @@ exports.getAllBookings = async (req, res) => {
         let bookings = await Booking.find(query)
             .populate({
                 path: "customer",
-                select: "name", // jitne fields chahiye
+                select: "name",
             })
             .populate({
                 path: "room",
@@ -1592,6 +1636,7 @@ exports.getReviewById = async (req, res) => {
 
 
 // -------------------------------- NOTIFICATION --------------------------------
+
 exports.getAllNotification = async (req, res) => {
     try {
         const guesthouseOwnerId = req.user.id;
@@ -1789,12 +1834,99 @@ exports.countNewNotifications = async (req, res) => {
 
 //__________________________________-- Payment history
 
+// exports.payoutHistory = async (req, res) => {
+//     try {
+//         const ownerId = req.user.id;
+
+//         //  Find the guesthouse for this owner
+//         const guesthouse = await Guesthouse.findOne({ owner: ownerId });
+//         if (!guesthouse) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "No guesthouse found for logged-in user"
+//             });
+//         }
+
+//         const guestHouseId = guesthouse._id;
+
+//         //  Find all bookings for this guesthouse
+//         const bookings = await Booking.find({ guesthouse: guestHouseId }).select("_id");
+
+//         if (!bookings.length) {
+//             return res.status(200).json({
+//                 success: true,
+//                 message: "No bookings found for this guesthouse",
+//                 data: []
+//             });
+//         }
+
+//         const bookingIds = bookings.map(b => b._id);
+
+//         //  Find payments for those bookings
+//         const payments = await Payment.find({ booking: { $in: bookingIds } })
+//             .populate({
+//                 path: "booking",
+//                 select: "customer",
+//                 populate: {
+//                     path: "customer",
+//                     select: "name"
+//                 }
+//             })
+//             .sort({ createdAt: -1 })
+//             .lean();
+
+//         if (!payments.length) {
+//             return res.status(200).json({
+//                 success: true,
+//                 message: "No payments found for this guesthouse",
+//                 data: []
+//             });
+//         }
+
+//         const formatted = payments.map(p => ({
+//             _id: p._id,
+//             requestId: p.requestId,
+//             amount: p.amount,
+//             status: p.paymentStatus
+//                 ? p.paymentStatus.charAt(0).toUpperCase() + p.paymentStatus.slice(1).toLowerCase()
+//                 : null,
+//             customerName: p.booking?.customer?.name || "N/A",
+//             paymentDate: p.paymentDate
+//                 ? moment(p.paymentDate).tz("Asia/Kolkata").format("DD-MM-YYYY")
+//                 : moment(p.createdAt).tz("Asia/Kolkata").format("DD-MM-YYYY")
+//         }));
+
+
+//         //  Calculate total
+//         const totalAmount = formatted
+//             .filter(p => p.status === "Paid")
+//             .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+
+//         //  Send response
+//         return res.status(200).json({
+//             success: true,
+//             message: "Payout history fetched successfully",
+//             totalPayments: formatted.length,
+//             totalAmount,
+//             data: formatted
+//         });
+
+//     } catch (error) {
+//         console.error("Error fetching payout history:", error);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Internal server error while fetching payout history",
+//             error: error.message
+//         });
+//     }
+// };
 
 exports.payoutHistory = async (req, res) => {
     try {
         const ownerId = req.user.id;
 
-        //  Find the guesthouse for this owner
+        // find guesthouse
         const guesthouse = await Guesthouse.findOne({ owner: ownerId });
         if (!guesthouse) {
             return res.status(400).json({
@@ -1805,65 +1937,50 @@ exports.payoutHistory = async (req, res) => {
 
         const guestHouseId = guesthouse._id;
 
-        //  Find all bookings for this guesthouse
+        // ---- TOTAL EARNINGS (Paid Payments Total) ----
         const bookings = await Booking.find({ guesthouse: guestHouseId }).select("_id");
-
-        if (!bookings.length) {
-            return res.status(200).json({
-                success: true,
-                message: "No bookings found for this guesthouse",
-                data: []
-            });
-        }
 
         const bookingIds = bookings.map(b => b._id);
 
-        //  Find payments for those bookings
-        const payments = await Payment.find({ booking: { $in: bookingIds } })
-            .populate({
-                path: "booking",
-                select: "customer",
-                populate: {
-                    path: "customer",
-                    select: "name"
-                }
-            })
+        const payments = await Payment.find({
+            booking: { $in: bookingIds },
+            paymentStatus: "paid"
+        }).lean();
+
+        const totalEarnings = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+
+        // ---- PAYOUT REQUEST LIST ----
+        const payoutRequests = await PayoutRequest.find({
+            guesthouse: guestHouseId
+        })
             .sort({ createdAt: -1 })
             .lean();
 
-        if (!payments.length) {
-            return res.status(200).json({
-                success: true,
-                message: "No payments found for this guesthouse",
-                data: []
-            });
-        }
+        // ---- TOTAL PAYMENT PAYOUTS (Approved total) ----
+        const paymentPayouts = payoutRequests
+            .filter(r => r.status === "Approved")
+            .reduce((sum, r) => sum + (r.amount || 0), 0);
 
-        // Format with Indian time
-        const formatted = payments.map(p => ({
-            _id: p._id,
-            requestId: p.requestId,
-            amount: p.amount,
-            status: p.paymentStatus,
-            customerName: p.booking?.customer?.name || "N/A",
-            paymentDate: p.paymentDate
-                ? moment(p.paymentDate).tz("Asia/Kolkata").format("DD-MM-YYYY")
-                : moment(p.createdAt).tz("Asia/Kolkata").format("DD-MM-YYYY")
+
+        // ---- FORMAT LIST FOR UI ----
+        const payoutList = payoutRequests.map(r => ({
+            payoutId: r.payoutId,
+            amount: r.amount,
+            status: r.status.charAt(0).toUpperCase() + r.status.slice(1).toLowerCase(),
+            date: moment(r.createdAt).tz("Asia/Kolkata").format("DD-MM-YYYY")
         }));
 
-        //  Calculate total
-        const totalAmount = formatted
-            .filter(p => p.status === "paid")
-            .reduce((sum, p) => sum + (p.amount || 0), 0);
+        const availableBalance = await calculateWalletBalance(guestHouseId);
 
-
-        //  Send response
         return res.status(200).json({
             success: true,
             message: "Payout history fetched successfully",
-            totalPayments: formatted.length,
-            totalAmount,
-            data: formatted
+            totalEarnings,
+            availableBalance,
+            paymentPayouts,
+            totalPayoutRequests: payoutList.length,
+            data: payoutList
         });
 
     } catch (error) {
@@ -1877,3 +1994,107 @@ exports.payoutHistory = async (req, res) => {
 };
 
 
+// send Payouts PayoutRequest
+
+exports.requestPayout = async (req, res) => {
+    try {
+        const ownerId = req.user.id;
+
+        const guesthouse = await Guesthouse.findOne({ owner: ownerId });
+        if (!guesthouse) {
+            return res.status(400).json({
+                success: false,
+                message: "No guesthouse found for this user"
+            });
+        }
+
+        const guestHouseId = guesthouse._id;
+
+        // Step 1 → Calculate dynamic wallet
+        const availableBalance = await calculateWalletBalance(guestHouseId);
+        console.log(availableBalance)
+
+        let {
+            amount,
+            bankName,
+            accountNumber,
+            branchCode,
+            swiftCode
+        } = req.body || {};
+
+        bankName = bankName?.trim();
+        accountNumber = accountNumber?.trim();
+        branchCode = branchCode?.trim();
+        swiftCode = swiftCode?.trim().toUpperCase();
+
+
+        if (!guesthouse) {
+            return res.status(400).json({ success: false, message: 'Guesthouse ID is required' });
+        }
+        if (!amount || isNaN(amount)) {
+            return res.status(200).json({ success: false, message: 'Valid payout amount is required' });
+        }
+
+        if (amount < 1000) {
+            return res.status(200).json({ success: false, message: 'amount should be more then and equal to 1000' });
+
+        }
+
+        if (!bankName || bankName.length < 3) {
+            return res.status(200).json({ success: false, message: 'Bank name must be at least 3 characters' });
+        }
+
+        if (!accountNumber || !/^[0-9]{6,25}$/.test(accountNumber)) {
+            return res.status(200).json({ success: false, message: 'Account number must be 6-25 digits' });
+        }
+
+        if (!branchCode || branchCode.length < 2 || branchCode.length > 20) {
+            return res.status(200).json({ success: false, message: 'Branch code must be 2-20 characters' });
+        }
+
+        if (!swiftCode || !/^[A-Z0-9]{8,11}$/.test(swiftCode)) {
+            return res.status(200).json({ success: false, message: 'SWIFT code must be 8-11 alphanumeric characters' });
+        }
+
+        if (amount > availableBalance) {
+            return res.status(200).json({ success: false, message: 'amount should be less than or equal than availableBalance' });
+        }
+
+        //  Step 3 → Generate payoutId (P + 5 digits)
+        let payoutId;
+
+        while (true) {
+            const digits = Math.floor(10000 + Math.random() * 90000);
+            payoutId = `P${digits}`;  // Example: P12345
+
+            const exists = await PayoutRequest.findOne({ payoutId });
+            if (!exists) break;
+        }
+
+        // Step 3 → Create payout request
+        const payout = await PayoutRequest.create({
+            payoutId,
+            guesthouse: guestHouseId,
+            amount,
+            bankName,
+            accountNumber,
+            branchCode,
+            swiftCode
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Payout request submitted",
+            availableBalanceAfterRequest: availableBalance - amount,
+            data: payout
+        });
+
+    } catch (error) {
+        console.log("Payout request error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while sending request for payout",
+            error: error.message
+        });
+    }
+};

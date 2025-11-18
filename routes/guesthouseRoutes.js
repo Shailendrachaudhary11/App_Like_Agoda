@@ -32,4 +32,6 @@ router.post("/guesthouse/notifications/new-count", auth(["guesthouse"]), guestho
 
 router.post("/guesthouse/payouts", auth(["guesthouse"]), guesthouseController.payoutHistory);
 
+router.post("/guesthouse/payoutRequest", auth(["guesthouse"]), guesthouseController.requestPayout);
+
 module.exports = router;

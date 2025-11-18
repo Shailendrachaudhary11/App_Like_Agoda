@@ -10,7 +10,7 @@ const promoSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
-    status: { type: String, default: "active" }
+    status: { type: String, default: "Active" }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Promo", promoSchema);

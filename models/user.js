@@ -37,10 +37,12 @@ const UserSchema = new mongoose.Schema({
     role: {
         type: String,
         enum: ['guesthouse', 'customer'],
-        default: 'customer'
+        required: [true, 'role is required'],
     },
     profileImage: { type: String },
+
     status: { type: String, enum: ['inactive', 'active'], default: 'inactive' },
+
     otp: { type: String },                // OTP field  
     otpExpiry: { type: Date },
     lastNotificationCheck: {

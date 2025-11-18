@@ -1,12 +1,24 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const AdminUser = require('../models/adminUser');
+const Blacklist = require("../models/TokenBlacklist")  // <-- ADD THIS
 
 const auth = (roles = []) => {
     return async (req, res, next) => {
         try {
             const token = req.headers['authorization']?.split(" ")[1];
             if (!token) return res.status(401).json({ message: "No token provided" });
+
+            req.token = token;
+
+            //  BLACKLIST CHECK
+            const isBlacklisted = await Blacklist.findOne({ token });
+            if (isBlacklisted) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Session expired or user logged out"
+                });
+            }
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             let user = await User.findById(decoded.id);

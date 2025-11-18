@@ -13,6 +13,8 @@ router.post("/userAuth/register", upload.single('profileImage'), registerValidat
 // login
 router.post('/userAuth/login', userController.login);
 
+router.post('/userAuth/logout', auth(),  userController.logout);
+
 // profile
 router.post("/userAuth/profile", auth(["guesthouse", "customer"]), userController.getMyProfile);
 router.post("/userAuth/update-profile", auth(["guesthouse", "customer"]), upload.single('profileImage'), userController.updateProfile);

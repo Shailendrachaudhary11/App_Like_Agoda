@@ -13,12 +13,15 @@ const AdminSchema = new mongoose.Schema({
     email: {
         type: String,
         unique: true,
+        trim: true,
         required: [true, 'Email is required'],
         match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address']
     },
 
     phone: {
         type: String,
+        trim: true,
+        required: [true, 'phone number is required'],
         match: [/^\d{10}$/, 'Phone number must be 10 digits'] // optional validation
     },
 
@@ -26,11 +29,13 @@ const AdminSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Password is required']
     },
-
     role: {
         type: String,
-        default: 'admin'
+        enum: ['admin', 'Manager', 'Supervisor'], // only valid roles
+        required: [true, 'Role is required']
     },
+
+    status: { type: String, enum: ['Inactive', 'Active'], default: 'Active' },
 
     adminImage: {
         type: String
@@ -44,10 +49,6 @@ const AdminSchema = new mongoose.Schema({
         type: Date
     },
 
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Admin', AdminSchema);
