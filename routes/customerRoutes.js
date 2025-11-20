@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const customerController = require("../controller/customerController");
 const adminController = require("../controller/adminController");
 const auth = require("../middlewares/authMiddleware");
@@ -58,5 +59,25 @@ router.post("/customer/wallet", auth(["customer"]), customerController.getWallet
 router.post("/report", auth(["customer"]), upload.single("issueImage"), customerController.report);
 router.post("/report/issueTypes", auth(["customer"]), adminController.getIssueTypes);
 router.post("/guesthouse/names", auth(["customer"]), customerController.getAllGuesthouseName);
+
+//___________________________ webviews
+
+router.get('/help/faqs', (req, res) => {
+    res.sendFile(path.join(__dirname, '../views/faqs.html'));
+});
+
+router.get('/help/contact', (req, res) => {
+    res.sendFile(path.join(__dirname, '../views/contact.html'));
+});
+
+
+router.get('/help/how-it-works', (req, res) => {
+    res.sendFile(path.join(__dirname, '../views/how_it_works.html'));
+});
+
+router.get('/help/about-us', (req, res) => {
+    res.sendFile(path.join(__dirname, '../views/aboutWebView.html'));
+});
+
 
 module.exports = router;

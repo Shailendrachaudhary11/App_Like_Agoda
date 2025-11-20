@@ -2,9 +2,19 @@ const User = require("../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
-// const createNotification = require("../utils/notificationHelper");
-// const Admin = require("../models/adminUser")
+const createNotification = require("../utils/notificationHelper");
+const Admin = require("../models/adminUser")
 const TokenBlacklist = require("../models/TokenBlacklist");
+
+function capitalize(name) {
+    if (!name) return "";
+
+    return name
+        .trim()
+        .split(/\s+/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(" ");
+}
 
 exports.register = async (req, res) => {
     try {
@@ -63,7 +73,9 @@ exports.register = async (req, res) => {
             name: name.trim().charAt(0).toUpperCase() + name.trim().slice(1),
             email,
             phone,
-            address: address ? address.trim().charAt(0).toUpperCase() + address.trime.slice(1) : "",
+            address: address
+                ? address.trim().charAt(0).toUpperCase() + address.trim().slice(1)
+                : "",
             password: hashedPassword,
             role: userRole,
             profileImage: null,
@@ -79,29 +91,30 @@ exports.register = async (req, res) => {
         await newUser.save();
 
         // Notify admin if guesthouse
-        // if (userRole === "guesthouse") {
-        //     const masterAdmin = await Admin.findOne({ role: "admin" });
-        //     if (masterAdmin) {
-        //         await createNotification(
-        //             { userId: newUser._id, role: "guesthouse" },
-        //             { userId: masterAdmin._id, role: "admin" },
-        //             "New Guesthouse Registration",
-        //             `Guesthouse "${newUser.name}" has registered and is waiting for approval.`,
-        //             "system",
-        //             { guesthouseId: newUser._id }
-        //         );
-        //     } else {
-        //         console.warn("[NOTIFICATION] No master admin found.");
-        //     }
-        // }
+
+        if (userRole === "guesthouse") {
+            const masterAdmin = await Admin.findOne({ role: "admin" });
+            if (masterAdmin) {
+                await createNotification(
+                    { userId: newUser._id, role: "guesthouse" },
+                    { userId: masterAdmin._id, role: "admin" },
+                    "New Guesthouse Registration",
+                    `Guesthouse "${newUser.name}" has been successfully registered and is now pending approval.`,
+                    "system",
+                    { guesthouseId: newUser._id }
+                );
+            } else {
+                console.warn("[NOTIFICATION] No master admin found.");
+            }
+        }
 
         // Return response
 
         return res.status(201).json({
             success: true,
             message: userRole === "customer"
-                ? "Customer registered & approved successfully."
-                : "Guesthouse registered. Wait for admin approval.",
+                ? "Your account has been created successfully."
+                : "Your guesthouse has been registered. Our team will review and approve it shortly.",
             id: newUser._id
         });
 
@@ -434,19 +447,30 @@ exports.updateProfile = async (req, res) => {
         //  Update name if provided
         if (name) {
             name = name.toString().trim();
+
+            name = name.replace(/\s+/g, " ");
+
             if (name.length < 4) {
                 return res.status(400).json({
                     success: false,
                     message: "Name must be at least 4 characters long."
                 });
             }
-            user.name = name.charAt(0).toUpperCase() + name.slice(1);
+
+            // Only alphabets + space allowed
+            if (!/^[A-Za-z\s]+$/.test(name)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name can only contain alphabets and spaces."
+                });
+            }
+            user.name = capitalize(name);
         }
 
         //  Update email if provided
         if (email) {
             email = email.toString().trim().toLowerCase();
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
             if (!emailRegex.test(email)) {
                 return res.status(400).json({
                     success: false,
@@ -493,9 +517,12 @@ exports.updateProfile = async (req, res) => {
 
         //  Update address if provided
         if (address) {
+
             address = address.toString().trim();
+            address = address.replace(/\s+/g, " ");
+
             if (address.length > 0) {
-                user.address = address.charAt(0).toUpperCase() + address.slice(1);
+                user.address = capitalize(address);
             }
         }
 

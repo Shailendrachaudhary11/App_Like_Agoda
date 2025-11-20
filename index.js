@@ -5,6 +5,7 @@ const userRoutes = require('./routes/userRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const guestHouseRoutes = require('./routes/guesthouseRoutes');
 const customerRoutes = require("./routes/customerRoutes");
+const webRoutes = require("./routes/webRoutes");
 const ensureUploadDirs = require("./utils/createUploadDirs");
 const path = require("path");
 const cors = require("cors");
@@ -37,6 +38,7 @@ app.use('/api/adminAuth', adminRoutes);
 app.use('/api', userRoutes);
 app.use('/api', guestHouseRoutes);
 app.use('/api', customerRoutes);
+app.use('/api/web', webRoutes);
 
 // Start server
 const PORT = process.env.PORT || 5050;

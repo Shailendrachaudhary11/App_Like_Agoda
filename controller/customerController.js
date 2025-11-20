@@ -681,6 +681,48 @@ exports.createBooking = async (req, res) => {
             reason: paymentMethod ? "Payment completed" : "Awaiting payment"
         });
 
+        // If payment method is Wallet -> Deduct from user's wallet
+        if (paymentMethod === "Wallet") {
+
+            // 1. Fetch customer wallet
+            const wallet = await Wallet.findOne({ user: customerId });
+
+            if (!wallet) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Wallet not found for this user."
+                });
+            }
+
+            // 2. Check if wallet has enough balance
+            if (wallet.balance < totalPrice) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Insufficient wallet balance."
+                });
+            }
+
+            // 3. Deduct amount
+            wallet.balance -= totalPrice;
+
+            // Generate transaction ID
+            const transactionId = "TRANS" + Date.now();
+
+            // 4. Push debit transaction
+            wallet.transactions.push({
+                amount: totalPrice,
+                type: "debit",
+                transactionId: transactionId,
+                date: new Date()
+            });
+
+            wallet.updatedAt = new Date();
+            await wallet.save();
+
+            console.log("WALLET UPDATED: Amount debited successfully");
+        }
+
+
         if (paymentMethod) {
             const validPaymentMethods = ["Card", "Paypal", "UPI", "Wallet"];
             if (!validPaymentMethods.includes(paymentMethod)) {
@@ -1913,12 +1955,12 @@ exports.getAllPromos = async (req, res) => {
 
 exports.getPromoById = async (req, res) => {
     try {
-        const { promoId } = req.body;
+        const { promoCode } = req.body;
         const today = new Date();
         today.setHours(0, 0, 0, 0); // only date part
 
         const promo = await Promo.findOne({
-            _id: promoId,
+            code: promoCode,
             status: "active",
         }).select("-createdAt -updatedAt -__v")
 
@@ -1930,7 +1972,6 @@ exports.getPromoById = async (req, res) => {
             });
         }
 
-        logger.info(`[PROMO] Fetched active promo code with ID: ${promoId}`);
 
         const formattedPromo = {
             id: promo._id,
@@ -1949,7 +1990,6 @@ exports.getPromoById = async (req, res) => {
         });
 
     } catch (err) {
-        logger.error(`[PROMO] Error fetching promo ID: ${promoId}. Error: ${err.message}`, { stack: err.stack });
         return res.status(500).json({
             success: false,
             message: "Error fetching promo.",

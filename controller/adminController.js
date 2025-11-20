@@ -20,6 +20,7 @@ const mongoose = require('mongoose');
 const Issue = require("../models/Issue");
 const moment = require("moment-timezone");
 const PayoutRequest = require("../models/PayoutRequest");
+const FAQ = require("../models/faqSchema")
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -38,8 +39,6 @@ function capitalize(name) {
         .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
         .join(" ");
 }
-
-
 
 exports.register = async (req, res) => {
     try {
@@ -101,7 +100,12 @@ exports.register = async (req, res) => {
 
 exports.addUser = async (req, res) => {
     try {
-        let { name, email, password, role, phone } = req.body;
+        let { name, email, password, role, phone, permissions } = req.body;
+
+        // Convert permissions to array (if coming as string)
+        if (permissions && typeof permissions === "string") {
+            permissions = JSON.parse(permissions);
+        }
 
         // Trim input
         name = name?.trim();
@@ -142,6 +146,14 @@ exports.addUser = async (req, res) => {
             });
         }
 
+        // Permissions validation
+        if (permissions && !Array.isArray(permissions)) {
+            return res.status(400).json({
+                success: false,
+                message: "Permissions must be an array of strings."
+            });
+        }
+
         // Check email exists
         const emailExist = await AdminUser.findOne({ email });
         if (emailExist) {
@@ -151,9 +163,6 @@ exports.addUser = async (req, res) => {
             });
         }
 
-        // Capitalize name & role
-        name = capitalize(name);
-        role = capitalize(role);
 
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -166,12 +175,13 @@ exports.addUser = async (req, res) => {
 
         // Save user
         const newAdmin = new AdminUser({
-            name,
+            name: capitalize(name),
             email,
             phone,
             password: hashedPassword,
             role,
-            adminImage
+            adminImage,
+            permissions: permissions || []
         });
 
         await newAdmin.save();
@@ -260,11 +270,12 @@ exports.login = async (req, res) => {
                 name: adminUser.name,
                 email: adminUser.email,
                 phone: adminUser.phone,
-                role: adminUser.role
+                role: adminUser.role,
+                permissions: adminUser.permissions
             }
         });
     } catch (error) {
-        console.error("Error in admin login:", error.message);
+        // console.error("Error in admin login:", error.message);
         return res.status(500).json({
             success: false,
             message: "Error while login admin users",
@@ -542,7 +553,7 @@ exports.forgotPassword = async (req, res) => {
 
         //erate OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        user.otp = otp; //e OTP in DB
+        user.otp = otp; // OTP in DB
         await user.save();
 
         //erate JWT token for OTP verification
@@ -635,37 +646,95 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
-//__________________
+//____________________ PERMISSIONS________________
 
-// exports.getAllSupervisors = async (req, res) => {
+exports.getAllPermissions = async (req, res) => {
+    try {
+
+        const permissions = [
+            "Dashboard",
+            "Manage Guesthouse",
+            "Manage Rooms",
+            "Manage Bookings",
+            "Manage Customer",
+            "Manage Manager",
+            "Manage Supervisior",
+            "Manage All Atolls",
+            "Manage Payments",
+            "Manage Payouts",
+            "Manage Offers",
+            "Manage Reports",
+
+        ];
+
+        return res.status(200).json({
+            success: true,
+            message: "Permissions fetched successfully",
+            data: permissions
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong",
+            error: error.message
+        });
+    }
+};
+
+// exports.getAllPermissions = async (req, res) => {
 //     try {
-//         console.log(req.user.role);
-//         let supervisors = await AdminUser.find({ role: 'Supervisor' }).select("name email phone adminImage status");
 
-//         if (!supervisors || supervisors.length === 0) {
-//             return res.status(404).json({ success: false, message: 'No supervisors found' });
-//         }
-
-//         // Add full URL for adminImage
-//         supervisors = supervisors.map((admin) => {
-//             return {
-//                 ...admin._doc, // spread all other fields
-//                 adminImage: admin.adminImage
-//                     ? `${BASE_URL}/uploads/adminImage/${admin.adminImage}`
-//                     : null
-//             };
-//         });
+//         const permissions = [
+//             {
+//                 module: "Dashboard",
+//                 permissions: ["view"]
+//             },
+//             {
+//                 module: "Manage Payments",
+//                 permissions: ["view", "approve", "reject"]
+//             },
+//             {
+//                 module: "Manage All Atolls",
+//                 permissions: ["view", "create", "edit", "delete"]
+//             },
+//             {
+//                 module: "Manage Customer",
+//                 permissions: ["view", "create", "edit", "delete"]
+//             },
+//             {
+//                 module: "Manage Bookings",
+//                 permissions: ["view", "create", "edit", "cancel"]
+//             },
+//             {
+//                 module: "Manage Rooms",
+//                 permissions: ["view", "create", "edit", "delete"]
+//             },
+//             {
+//                 module: "Manage Guesthouse",
+//                 permissions: ["view", "create", "edit", "delete", "approve"]
+//             }
+//         ];
 
 //         return res.status(200).json({
 //             success: true,
-//             count: supervisors.length,
-//             data: supervisors
+//             message: "Permissions fetched successfully",
+//             data: permissions
 //         });
+
 //     } catch (error) {
 //         console.error(error);
-//         return res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+//         return res.status(500).json({
+//             success: false,
+//             message: "Something went wrong",
+//             error: error.message
+//         });
 //     }
 // };
+
+
+//_______________________ SUPERVISOR MANAGER_________________
 
 exports.getAllSupervisorsMananger = async (req, res) => {
     try {
@@ -756,7 +825,6 @@ exports.getUserByRoleAndId = async (req, res) => {
     }
 };
 
-
 exports.activeInactiveUserByRole = async (req, res) => {
     try {
         const { userId, role } = req.body;
@@ -806,11 +874,9 @@ exports.activeInactiveUserByRole = async (req, res) => {
     }
 };
 
-
-
 exports.updateUserByRole = async (req, res) => {
     try {
-        let { userId, role, name, email, phone } = req.body;
+        let { userId, role, name, email, phone, permissions } = req.body;
 
         if (!userId || !role) {
             return res.status(400).json({
@@ -862,6 +928,34 @@ exports.updateUserByRole = async (req, res) => {
             user.adminImage = req.file.filename;
         }
 
+
+        // ------------ UPDATE PERMISSIONS -------------
+        if (permissions) {
+            let permArr;
+
+            // If permissions comes as string like: '["Dashboard","Manage Customer"]'
+            if (typeof permissions === "string") {
+                try {
+                    permArr = JSON.parse(permissions);
+                } catch (err) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Permissions must be a valid JSON array."
+                    });
+                }
+            } else if (Array.isArray(permissions)) {
+                permArr = permissions;
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: "Permissions must be an array."
+                });
+            }
+
+            user.permissions = permArr; // Replace with new permissions
+        }
+
+
         await user.save({ validateBeforeSave: false });
 
         return res.status(200).json({
@@ -875,7 +969,7 @@ exports.updateUserByRole = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Server Error",
+            message: "Server Error while update user",
             error: error.message
         });
     }
@@ -910,7 +1004,7 @@ exports.deleteUserByRole = async (req, res) => {
         console.error(error);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
+            message: "Server Error while delete user",
             error: error.message
         });
     }
@@ -4981,6 +5075,7 @@ exports.viewReport = async (req, res) => {
             });
         }
 
+        // formatted information 
         const formatted = {
             _id: report._id,
             ticketId: report.ticketId,
@@ -5001,6 +5096,7 @@ exports.viewReport = async (req, res) => {
                 : null
         };
 
+        // response
         return res.status(200).json({
             success: true,
             message: "Report fetched successfully",
@@ -5106,56 +5202,154 @@ exports.getPayouts = async (req, res) => {
     }
 };
 
+// exports.changeStatusPayout = async (req, res) => {
+//     try {
+//         const { payoutId, status } = req.body;
+
+//         if (!payoutId || !status) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "payoutId and status required"
+//             });
+//         }
+
+//         const payout = await PayoutRequest.findById(payoutId);
+
+//         if (!payout) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "Payout not found"
+//             });
+//         }
+
+//         // Restriction logic
+//         if (payout.status === "Approved" && status === "Rejected") {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Already Approved — Cannot change to Rejected"
+//             });
+//         }
+
+//         if (payout.status === "Rejected" && status === "Approved") {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Already Rejected — Cannot change to Approved"
+//             });
+//         }
+
+//         // Same status blocking
+//         if (payout.status === status) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: `Already ${status}`
+//             });
+//         }
+
+//         payout.status = status;
+//         payout.updatedAt = new Date();
+//         await payout.save();
+
+//         return res.status(200).json({
+//             success: true,
+//             message: `Payout ${status} successfully`,
+//             data: payout
+//         });
+
+//     } catch (error) {
+//         console.log(error);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Internal server error while updating status of payout."
+//         });
+//     }
+// }
+
 exports.changeStatusPayout = async (req, res) => {
     try {
+        const adminId = req.user.id;
         const { payoutId, status } = req.body;
 
         if (!payoutId || !status) {
-            return res.status(400).json({
-                success: false,
-                message: "payoutId and status required"
-            });
+            return res.status(400).json({ success: false, message: "payoutId and status required" });
         }
 
         const payout = await PayoutRequest.findById(payoutId);
-
-        if (!payout) {
-            return res.status(404).json({
-                success: false,
-                message: "Payout not found"
-            });
-        }
+        if (!payout) return res.status(404).json({ success: false, message: "Payout not found" });
 
         // Restriction logic
-        if (payout.status === "Approved" && status === "Rejected") {
-            return res.status(400).json({
-                success: false,
-                message: "Already Approved — Cannot change to Rejected"
-            });
+        if ((payout.status === "Approved" && status === "Rejected") ||
+            (payout.status === "Rejected" && status === "Approved") ||
+            payout.status === status) {
+            return res.status(400).json({ success: false, message: `Invalid status change from ${payout.status} to ${status}` });
         }
 
-        if (payout.status === "Rejected" && status === "Approved") {
-            return res.status(400).json({
-                success: false,
-                message: "Already Rejected — Cannot change to Approved"
-            });
+        let finalStatus = status;
+
+        const guesthouse = await Guesthouse.findById(payout.guesthouse);
+        if (!guesthouse) throw new Error("Guesthouse not found");
+
+        const owner = await User.findById(guesthouse.owner);
+        if (!owner) throw new Error("User not found");
+
+
+        if (status === "Approved") {
+            try {
+                // Credit to user wallet
+                // const guesthouse = await Guesthouse.findById(payout.guesthouse);
+                // if (!guesthouse) throw new Error("Guesthouse not found");
+
+                // const owner = await User.findById(guesthouse.owner);
+                // if (!owner) throw new Error("User not found");
+
+                // owner.wallet = (owner.wallet || 0) + payout.amount;
+                // await owner.save();
+
+                finalStatus = "Approved";
+
+                // Notification to guesthouse owner
+                console.log(owner._id)
+                await createNotification(
+                    { userId: adminId, role: "admin" },
+                    { userId: guesthouse._id, role: "guesthouse" },
+                    "Payout Approved",
+                    `Your payout of MVR${payout.amount} has been approved and credited to your wallet.`,
+                    "payout"
+                );
+
+            } catch (err) {
+                console.log("Wallet credit failed:", err.message);
+                finalStatus = "Failed";
+
+                // Notification on failure
+                await createNotification(
+                    { userId: adminId, role: "admin" },
+                    { userId: guesthouse._id, role: "guesthouse" },
+                    "Payout Failed",
+                    `Payout of MVR${payout.amount} could not be credited: ${err.message}`,
+                    "payout"
+                );
+            }
+        } else if (status === "Rejected") {
+            finalStatus = "Rejected";
+
+            console.log(owner._id)
+            // Notification for rejection
+            await createNotification(
+                { userId: adminId, role: "admin" },
+                { userId: guesthouse._id, role: "guesthouse" },
+                "Payout Rejected",
+                `Your payout of MVR${payout.amount} has been rejected.`,
+                "payout"
+            );
         }
 
-        // Same status blocking
-        if (payout.status === status) {
-            return res.status(400).json({
-                success: false,
-                message: `Already ${status}`
-            });
-        }
-
-        payout.status = status;
+        payout.status = finalStatus;
         payout.updatedAt = new Date();
         await payout.save();
 
         return res.status(200).json({
             success: true,
-            message: `Payout ${status} successfully`,
+            message: `Payout status updated to ${finalStatus}`,
             data: payout
         });
 
@@ -5163,7 +5357,190 @@ exports.changeStatusPayout = async (req, res) => {
         console.log(error);
         return res.status(500).json({
             success: false,
-            message: "Internal server error while updating status of payout."
+            message: "Internal server error while updating payout status."
         });
     }
-}
+};
+
+//_____________F&Q
+
+exports.createFAQ = async (req, res) => {
+    try {
+        const { question, answer, status } = req.body;
+
+        if (!question || question.trim().length < 10) {
+            return res.status(400).json({
+                success: false,
+                message: "Question must be at least 10 characters long"
+            });
+        }
+
+        if (!answer || answer.trim().length < 10) {
+            return res.status(400).json({
+                success: false,
+                message: "Answer must be at least 10 characters long"
+            });
+        }
+
+        const faq = await FAQ.create({ question, answer, status });
+
+        res.status(201).json({
+            success: true,
+            message: "FAQ added successfully"
+        });
+
+    } catch (err) {
+        console.log(err);
+
+        if (err.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: "This question already exists. Please add a new FAQ."
+            });
+        }
+
+        if (err.name === "ValidationError") {
+            return res.status(400).json({
+                success: false,
+                message: Object.values(err.errors).map(e => e.message)[0],
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: "Error while adding FAQ",
+            error: err.message
+        });
+    }
+};
+
+exports.getAllFAQs = async (req, res) => {
+    try {
+        const faqs = await FAQ.find().sort({ createdAt: -1 }).select("question answer status"); // latest first
+
+        return res.status(200).json({
+            success: true,
+            count: faqs.length,
+            message: "Successfully fetch all f and Q",
+            faqs
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: "Error while fetching FAQs",
+            error: err.message
+        });
+    }
+};
+
+exports.activeInActiveFandQ = async (req, res) => {
+    try {
+        const { id } = req.body;
+        const { status } = req.body; // active or inactive
+
+        if (!["Active", "Inactive"].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid status value. Only 'Active' or 'Inactive' allowed."
+            });
+        }
+
+        const faq = await FAQ.findByIdAndUpdate(
+            id,
+            { status },
+            { new: true }
+        );
+
+        if (!faq) {
+            return res.status(404).json({
+                success: false,
+                message: "FAQ not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `FAQ status updated to ${status}`,
+            faq
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: "Error while updating FAQ status",
+            error: err.message
+        });
+    }
+};
+
+exports.deleteFAQ = async (req, res) => {
+    try {
+        const { id } = req.body;
+
+        const faq = await FAQ.findByIdAndDelete(id);
+
+        if (!faq) {
+            return res.status(404).json({
+                success: false,
+                message: "FAQ not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "FAQ deleted successfully"
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: "Error while deleting FAQ",
+            error: err.message
+        });
+    }
+};
+
+exports.updateFAQ = async (req, res) => {
+    try {
+        const { id } = req.body;
+        const { question, answer } = req.body;
+
+        // Validate: Only strings allowed
+        if (question && typeof question !== "string") {
+            return res.status(400).json({ success: false, message: "Question must be a string" });
+        }
+        if (answer && typeof answer !== "string") {
+            return res.status(400).json({ success: false, message: "Answer must be a string" });
+        }
+
+        const updatedFAQ = await FAQ.findByIdAndUpdate(
+            id,
+            { question, answer },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedFAQ) {
+            return res.status(404).json({ success: false, message: "FAQ not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "FAQ updated successfully",
+            faq: updatedFAQ
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: "Error while updating FAQ",
+            error: err.message
+        });
+    }
+};
+
+
+
+
+
+

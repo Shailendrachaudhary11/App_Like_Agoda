@@ -61,9 +61,6 @@ const calculateWalletBalance = async (guesthouseId) => {
 };
 
 
-
-
-
 // -------------------------------- GUESTHOUSE --------------------------------
 
 
@@ -317,16 +314,27 @@ exports.manageGuestHouse = async (req, res) => {
 
         console.log(`[GUESTHOUSE] Managing guesthouse by user ${ownerId}`);
 
-        name = (name?.trim() || "");
-        name = name.charAt(0).toUpperCase() + name.slice(1);
-        address = (address?.trim() || "");
-        address = address.charAt(0).toUpperCase() + address.slice(1);
-        description = description?.trim() || "";
+        name = (name || "").toString().trim();
+        if (name.length > 0) {
+            name = name.charAt(0).toUpperCase() + name.slice(1);
+        }
+
+        address = (address || "").toString().trim();
+        if (address.length > 0) {
+            address = address.charAt(0).toUpperCase() + address.slice(1);
+        }
+
+        description = (description || "").toString().trim();
+        if (description.length > 0) {
+            description = description.charAt(0).toUpperCase() + description.slice(1);
+        }
+
         contactNumber = contactNumber?.trim() || "";
-        atolls = atolls?.trim() || "";
-        islands = islands?.trim() || "";
-        latitude = latitude?.trim() || "";
-        longitude = longitude?.trim() || "";
+        atolls = (atolls ?? "").toString().trim();
+        islands = (islands ?? "").toString().trim();
+        latitude = latitude ?? 0;
+        longitude = longitude ?? 0;
+
 
         //  Step 1: Check if guesthouse already exists
         let guesthouse = await Guesthouse.findOne({ owner: ownerId });
@@ -386,24 +394,59 @@ exports.manageGuestHouse = async (req, res) => {
             //     facilityIds = Array.from(mergedFacilities);
             // }
 
-            let facilityIds = guesthouse.facilities;
+            // let facilityIds = guesthouse.facilities;
 
-            //  Replace old facilities completely with new ones
+            // //  Replace old facilities completely with new ones
+            // if (facilities) {
+            //     let facArr = Array.isArray(facilities)
+            //         ? facilities
+            //         : JSON.parse(facilities);
+
+            //     const validFacilityIds = [];
+            //     for (const id of facArr) {
+            //         if (!id) continue;
+            //         const exists = await Facility.findById(id);
+            //         if (exists) validFacilityIds.push(exists._id);
+            //     }
+
+            //     // 🧹 Replace old facilities with new ones (no merge)
+            //     facilityIds = validFacilityIds;
+            // }
+
+            let facilityIds = [];
+
             if (facilities) {
-                let facArr = Array.isArray(facilities)
-                    ? facilities
-                    : JSON.parse(facilities);
+                let facArr;
 
-                const validFacilityIds = [];
-                for (const id of facArr) {
-                    if (!id) continue;
-                    const exists = await Facility.findById(id);
-                    if (exists) validFacilityIds.push(exists._id);
+                // Convert incoming to string and remove spaces
+                let cleanString = facilities.toString().trim();
+
+                // If it's empty, skip
+                if (cleanString === "" || cleanString === "[]") {
+                    facArr = [];
+                } else {
+                    // Try parsing JSON
+                    try {
+                        facArr = Array.isArray(facilities) ? facilities : JSON.parse(cleanString);
+                    } catch (err) {
+                        facArr = [];
+                    }
                 }
 
-                // 🧹 Replace old facilities with new ones (no merge)
+                // Validate ObjectIds
+                const validFacilityIds = [];
+                for (const id of facArr) {
+                    if (!id || typeof id !== "string") continue;
+
+                    if (mongoose.Types.ObjectId.isValid(id)) {
+                        const exists = await Facility.findById(id);
+                        if (exists) validFacilityIds.push(exists._id);
+                    }
+                }
+
                 facilityIds = validFacilityIds;
             }
+
 
 
             // Dynamic update object
@@ -1199,7 +1242,7 @@ exports.deleteRoom = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: `Room ${roomId} deleted successfully from guesthouse ${guesthouse.name}`
+            message: `Room deleted successfully`
         });
     } catch (err) {
         console.error("[ROOM] Delete error:", err);
@@ -1671,11 +1714,19 @@ exports.getAllNotification = async (req, res) => {
 
         const mappedNotifications = notifications.map(n => {
             let timeOnly = null;
+
             if (n.createdAt) {
                 const date = new Date(n.createdAt);
-                // hh:mm:ss format
-                timeOnly = date.toTimeString().split(" ")[0];
+
+                timeOnly = date.toLocaleTimeString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: false,
+                    timeZone: "Asia/Kolkata"
+                });
             }
+
             return {
                 id: n._id,
                 title: n.title,
@@ -1684,6 +1735,7 @@ exports.getAllNotification = async (req, res) => {
                 createdAt: timeOnly
             };
         });
+
 
 
         // Update lastNotificationCheck for the logged-in owner
@@ -1832,7 +1884,7 @@ exports.countNewNotifications = async (req, res) => {
     }
 };
 
-//__________________________________-- Payment history
+//__________________________________Payment history
 
 // exports.payoutHistory = async (req, res) => {
 //     try {
@@ -1993,6 +2045,15 @@ exports.payoutHistory = async (req, res) => {
     }
 };
 
+// exports.deletePayout = async (req, res) =>{
+//     try{
+//         const{ payoutId } = req.body;
+        
+
+//     } catch(error){
+
+//     }
+// }
 
 // send Payouts PayoutRequest
 

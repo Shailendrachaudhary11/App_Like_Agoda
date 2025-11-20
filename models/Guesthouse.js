@@ -31,13 +31,11 @@ const guesthouseSchema = new mongoose.Schema({
         set: v => typeof v === 'string' ? parseFloat(v) : v
     },
 
-
     atolls: { type: mongoose.Schema.Types.ObjectId, ref: 'Atoll' },
     islands: { type: mongoose.Schema.Types.ObjectId, ref: 'Island' },
     facilities: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Facility' }],
 
-    createdAt: { type: Date, default: Date.now },
-});
+}, { timestamps: true });
 
 guesthouseSchema.index({ location: '2dsphere' });
 

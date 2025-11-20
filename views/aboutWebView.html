@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!--=== Title ===-->
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/logo/faveicon.png" type="image/png" 
+rel="icon">
+<title>Cheap RoomsMV</title>
+
+<!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap">
+
+<!-- FontAwesome -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+
+
+<style type="text/css">
+
+/*breadcrumbs css start here*/
+
+.breadcrumbs-main-info-area {
+width: 100%;
+height:300px;
+position: relative;
+background-size: cover;
+background-position: center;
+background-repeat: no-repeat;
+background-image: url(https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/breadcrumb-img/breadcrumb.jpg);
+}
+
+.breadcrumbs-main-info-area:before {
+position: absolute;
+content: "";
+left: 0;
+right: 0;
+width: 100%;
+height: 100%;
+background-color:#0000007a;
+}
+
+
+.breadcrumbs-main-content {
+top: 125px;
+width: 100%;
+position: relative;
+text-align: center;
+padding: 0px 0px 80px 0px;
+}
+
+.breadcrumbs-main-content h2 {
+color: #fff;
+font-size: 25px;
+margin: 0px 0px 5px 0px;
+letter-spacing: 0.5px;
+}
+
+
+.breadcrumbs-main-content ul li {
+color: #fff;
+font-size: 16px;
+font-weight: 500;
+display: inline-block;
+letter-spacing: 0.5px;
+}
+
+.breadcrumbs-main-content ul li a {
+color: #fff;
+text-decoration: none;
+}
+
+
+.breadcrumbs-main-content ul li i {
+color:#20b2aa;  
+font-size:18px;
+}
+
+
+.comman-heading-info-area {
+text-align:center;  
+}
+
+.breadcrumbs-main-content .breadcrumbs-divder {
+color:#20b2aa; 
+}
+
+
+/*breadcrumbs css end here*/
+
+
+/*common css start here*/
+
+.inner-common-heading-info h5 {
+color: #20b2aa;
+font-size: 18px;
+font-weight: 600;
+text-transform: capitalize;
+}
+
+.inner-common-heading-info h2 {
+font-size:25px;
+font-weight:600;  
+}
+
+.inner-common-heading-info.heading-center-content {
+text-align:center;
+}
+
+.inner-common-heading-info.heading-center-content h2 {
+color:#fff; 
+font-size:25px; 
+text-align:center;  
+}
+
+/*common css end here*/
+
+
+
+/*about us css start here*/
+
+.welcome-info-main-area {
+margin:0px 0px 0px 0px;
+padding:60px 0px 60px 0px;  
+}
+
+.welcome-info-img-area img {
+width:100%; 
+}
+
+.welcome-info-content-area h5 {
+color: #20b2aa;
+margin: 15px 0px;
+font-weight: 420;
+}
+
+.welcome-info-content-area ul {
+margin:0px 0px 0px 0px;
+padding:0px 0px 0px 0px;  
+}
+
+.welcome-info-content-area ul li {  
+margin-top:10px;
+list-style:none;
+}
+
+.welcome-info-content-area ul li i {
+color: #20b2aa;
+font-size: 15px;
+margin-right: 5px;
+}
+
+.welcome-info-content-area ul li:hover {
+color:#20b2aa;
+}
+
+
+.who-we-are-info-area {
+background: #f0f5f7bf;
+margin: 0px 0px 0px 0px;
+padding: 60px 0px 60px 0px; 
+}
+
+.who-we-are-icon-content-info {
+display: flex;
+margin-top: 25px;
+padding-top: 25px;
+border-top: 1px solid #20b2aa;
+justify-content: space-between;
+}
+
+.who-we-are-icon {
+margin-right: 15px;
+}
+
+
+
+.who-we-are-info-img-area img {
+width:100%;
+}
+
+
+.who-we-are-icon-content h4 {
+font-size:18px;
+margin-bottom:0px;
+}
+
+
+.what-we-do-info-main-area {
+margin:0px 0px 0px 0px;
+padding:60px 0px 60px 0px;  
+}
+
+
+.what-we-do-info-img-area img {
+width:100%; 
+}
+
+
+.what-we-do-icon-content-info {
+display: flex;
+margin-top: 15px;
+padding-top: 15px;
+border-top: 1px solid #20b2aa;
+justify-content: space-between;
+}
+
+
+.what-we-do-icon {
+margin-right:15px;
+}
+
+.what-we-do-icon-content h4 {
+font-size:20px; 
+}
+
+.who-we-are-info-img-area {
+margin-top:20px;  
+}
+
+.who-we-are-icon-content-info {
+margin-top: 15px;
+padding-top: 10px;  
+}
+
+.who-we-are-icon-content-info p {
+margin-bottom:0px;  
+}
+
+
+
+.why-choose-info-main-area {
+position:relative;
+background-size: cover;
+background-position: center;
+background-repeat: no-repeat;
+background-attachment: fixed;
+background-image:url(https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/aboutsImg/whyChooseImg.jpg);
+}
+
+
+.why-choose-info-main-area:before{
+position: absolute;
+content: "";
+left: 0;
+right: 0;
+width: 100%;
+height: 100%;
+background-color: #000000bd;  
+}
+
+.why-choose-content-detail-info {
+position: relative;
+padding: 60px 0px 80px 0px;
+}
+
+
+.why-choose-box-info {
+width: 96%;
+margin-top: 40px;
+border-radius: 5px;
+padding: 20px 20px;
+background: #f9f9ff2b;
+border: 2px solid #fff;
+}
+
+.why-choose-box-info h5 {
+color:#20b2aa;  
+}
+
+.why-choose-box-info p {
+color:#fff; 
+}
+
+.mobile-app-info-main-area {
+background: #f4f8f9;
+margin: 0px 0px 0px 0px;
+padding: 70px 0px 70px 0px; 
+}
+
+
+.mobile-app-info-img-area img {
+width:100%;
+height:500px;
+object-fit:contain; 
+}
+
+.app-store-icon-info {
+display: flex;
+align-items: center;
+margin: 30px 0px;
+}
+
+.app-store-icon-info a {
+width: 35%;
+margin-right: 50px;
+}
+
+.app-store-icon-info a img {
+width:100%; 
+}
+
+.all-app-use-detail p {
+color:#20b2aa;
+font-size: 19px;
+font-style: italic;
+padding: 20px 0px 0px 0px;  
+}
+/*about us css end here*/  
+
+
+
+/*responsive css start here*/
+
+@media only screen and (max-width: 480px) {
+
+.why-choose-content-detail-info .col-6 {
+width: 100%;
+}  
+
+
+.breadcrumbs-main-info-area {
+height:120px;
+}
+
+.breadcrumbs-main-content {
+top:30px; 
+padding: 0px 0px 0px 0px; 
+}
+
+.breadcrumbs-main-content h2 {
+font-size:20px;  
+}
+
+.breadcrumbs-main-content ul {
+padding-left:0px;  
+}
+
+
+.welcome-info-main-area {
+padding:30px 0px 20px 0px;  
+}
+
+.who-we-are-info-area {
+padding:30px 0px 30px 0px; 
+}
+
+
+.welcome-info-img-area {
+margin-bottom:20px;  
+}
+
+.inner-common-heading-info h5 {
+font-size:15px;  
+}
+
+.inner-common-heading-info h2 {
+font-size:18px;  
+}
+
+.welcome-info-content-area h5 {
+font-size: 17px;
+font-weight: 500; 
+}
+
+
+.inner-common-heading-info.heading-center-content h2 {
+font-size:18px;  
+}
+
+
+.why-choose-box-info h5 {
+font-size: 17px;
+font-weight: 600;  
+}
+
+.what-we-do-info-img-area {
+margin-bottom:20px;  
+}
+
+
+.what-we-do-icon-content h4 {
+font-size: 18px;
+margin-bottom: 0px;
+}
+
+
+.app-store-icon-info a {
+width: 45%;
+margin-right: 10px;
+}
+
+
+.why-choose-box-info {
+width:100%;  
+}
+
+.why-choose-box-info {
+margin-top:20px;  
+}
+
+.why-choose-content-detail-info {
+padding: 30px 0px 30px 0px; 
+}
+
+.what-we-do-info-main-area {
+padding: 30px 0px 30px 0px;  
+}
+
+.what-we-do-icon-content p {
+margin-bottom:0px;  
+}
+
+.mobile-app-info-main-area {
+padding: 20px 0px 20px 0px;
+}
+
+.app-store-icon-info {
+margin: 10px 0px; 
+}
+
+
+.all-app-use-detail p {
+color:#000;
+font-size:13px;
+font-weight:600;
+}
+
+}
+
+
+@media only screen and (min-width:481px) and (max-width:568px) {
+
+.breadcrumbs-main-info-area {
+height:150px;
+}
+
+.breadcrumbs-main-content {
+top:50px; 
+padding: 0px 0px 0px 0px; 
+}
+
+.breadcrumbs-main-content h2 {
+font-size:20px;  
+}
+
+
+.breadcrumbs-main-content ul {
+padding-left:0px;  
+}
+
+.welcome-info-main-area {
+padding:30px 0px 20px 0px;  
+}
+
+.who-we-are-info-area {
+padding: 20px 0px 30px 0px; 
+}
+
+
+.welcome-info-img-area {
+margin-bottom:20px;  
+}
+
+.inner-common-heading-info h5 {
+font-size:17px;  
+}
+
+.inner-common-heading-info h2 {
+font-size:18px;  
+}
+
+.welcome-info-content-area h5 {
+font-size: 17px;
+font-weight: 500; 
+}
+
+
+.inner-common-heading-info.heading-center-content h2 {
+font-size:18px;  
+}
+
+
+.why-choose-box-info h5 {
+font-size: 17px;
+font-weight: 600;  
+}
+
+.what-we-do-info-img-area {
+margin-bottom:20px;  
+}
+
+
+.what-we-do-icon-content h4 {
+font-size: 18px;
+margin-bottom: 0px;
+}
+
+
+.app-store-icon-info a {
+width: 45%;
+margin-right: 10px;
+}
+
+
+.why-choose-box-info {
+width:100%;  
+}
+
+.why-choose-box-info {
+margin-top:20px;  
+}
+
+.why-choose-content-detail-info {
+padding: 30px 0px 30px 0px; 
+}
+
+.what-we-do-info-main-area {
+padding: 30px 0px 30px 0px;  
+}
+
+.what-we-do-icon-content p {
+margin-bottom:0px;  
+}
+
+.mobile-app-info-main-area {
+padding: 20px 0px 20px 0px;
+}
+
+.app-store-icon-info a img {
+width: 70%;  
+}
+
+.app-store-icon-info {
+margin: 10px 0px; 
+text-align:center;
+}
+
+
+.all-app-use-detail p {
+color:#000;
+font-weight:600;
+font-size: 16px;
+text-align:center;
+}
+
+
+}
+
+
+
+@media only screen and (min-width:569px) and (max-width:899px) {
+
+.breadcrumbs-main-info-area {
+height:200px;
+}
+
+.breadcrumbs-main-content {
+top:70px; 
+padding: 0px 0px 0px 0px; 
+}
+
+
+.breadcrumbs-main-content ul {
+padding-left:0px;  
+}
+
+.welcome-info-main-area {
+padding:30px 0px 20px 0px;  
+}
+
+.who-we-are-info-area {
+padding: 20px 0px 30px 0px; 
+}
+
+
+.welcome-info-img-area {
+margin-bottom:20px;  
+}
+
+.inner-common-heading-info h5 {
+font-size:18px;  
+}
+
+.inner-common-heading-info h2 {
+font-size:18px;  
+}
+
+.welcome-info-content-area h5 {
+font-size: 17px;
+font-weight: 500; 
+}
+
+
+.inner-common-heading-info.heading-center-content h2 {
+font-size:18px;  
+}
+
+
+.why-choose-box-info h5 {
+font-size: 17px;
+font-weight: 600;  
+}
+
+.what-we-do-info-img-area {
+margin-bottom:20px;  
+}
+
+
+.what-we-do-icon-content h4 {
+font-size: 18px;
+margin-bottom: 0px;
+}
+
+
+.app-store-icon-info a {
+width: 45%;
+margin-right: 10px;
+}
+
+
+.why-choose-box-info {
+width:100%;
+margin-top:20px;  
+padding: 10px 10px;
+}
+
+.why-choose-content-detail-info {
+padding: 30px 0px 30px 0px; 
+}
+
+.what-we-do-info-main-area {
+padding: 30px 0px 30px 0px;  
+}
+
+.what-we-do-icon-content p {
+margin-bottom:0px;  
+}
+
+.mobile-app-info-main-area {
+padding:30px 0px 30px 0px;
+}
+
+.app-store-icon-info a img {
+width: 70%;  
+}
+
+.app-store-icon-info {
+margin: 10px 0px; 
+text-align:center;
+}
+
+
+.all-app-use-detail p {
+color:#000;
+font-weight:600;
+font-size:14px;
+}
+
+}
+
+/*responsive css end here*/
+
+</style>
+
+</head>
+<body>
+
+<!--breadcrumbs section start here-->
+<section class="breadcrumbs-main-info-area">
+<div class="container">
+  <div class="row">
+   <div class="col-xl-12 col-lg-12 col-md-12">
+    <div class="breadcrumbs-main-content">
+     <h2>About Us</h2> 
+     <ul>
+       <li>Home</li>
+       <li class="breadcrumbs-divder">/</li>
+       <li>About Us</li>
+     </ul> 
+    </div>
+   </div> 
+  </div>
+</div> 
+</section>
+<!--breadcrumbs section end here-->
+
+
+
+
+
+<!--about us section start here-->
+
+<section class="welcome-info-main-area">
+ <div class="container">
+  <div class="row">
+    <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12">
+     <div class="welcome-info-img-area">
+      <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/aboutsImg/welcomeImgWeb.png">
+     </div>
+    </div>
+    <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12">
+     <div class="inner-common-heading-info">
+      <h5>Welcome to Cheap RoomsMV</h5>
+      <h2>Discover affordable comfort in the heart of the Maldives various Room bookings</h2> 
+     </div>
+     <div class="welcome-info-content-area">
+      <h5>Our operations span the globe, offering exceptional services across various Room bookings</h5>
+      <p>Discover affordable comfort in the heart of the Maldives. At Cheap RoomsMV, we believe that paradise shouldn’t come with a high price tag. Whether you’re a backpacker, traveler, or island explorer, our cozy rooms, friendly service, and local experiences make your stay unforgettable without breaking the bank. Tempor erat elitr rebum at clita. Diam dolor diam ipsum sit. Aliqu diam amet diam et eos. Clita erat ipsum et lorem et sit, sed stet lorem sit clita duo justo magna dolore erat amet Tempor erat elitr rebum at clita. Diam dolor diam sit.</p>
+      <ul>
+       <li><i class="fa-solid fa-square-check"></i>Relax in our Hotel Resort</li> 
+       <li><i class="fa-solid fa-square-check"></i>Indulge, escape & relax in the mountains</li>
+       <li><i class="fa-solid fa-square-check"></i>Highlight featured on Booking project</li> 
+       <li><i class="fa-solid fa-square-check"></i>Booking mission statement or Luxury hotel</li>
+       <li><i class="fa-solid fa-square-check"></i>Introduce best the Hotel Booking & their services</li>
+      </ul>
+     </div>
+    </div>
+  </div>
+ </div>   
+</section>
+
+
+<!--about us section end here-->
+
+
+
+
+
+<!--about us section start here-->
+
+<section class="who-we-are-info-area">
+ <div class="container">
+  <div class="row">
+    <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12">
+     <div class="inner-common-heading-info">
+      <h5>Who We Are?</h5>
+      <h2>The luxury upscale vacation destination that offers an exceptional level</h2> 
+     </div> 
+     <div class="who-we-are-content-info">
+      <p>The condimentum magna ut augue elementum ornare. Fusce posuere massa vitae maximus posuere. Mauris sagittis consectetur vulputate. Curabitur commodo est quis felis porttitor eleifend. Sed efficitur sem mi, et feugiat lorem scelerisque.</p>
+     </div>
+     <div class="who-we-are-icon-content-info">
+      <div class="who-we-are-icon">
+       <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/flatIcon/mission.png">         
+      </div>
+      <div class="who-we-are-icon-content">
+       <h4>Our Mission</h4>
+       <p>Discover a sanctuary where sun-kissed shores meet timeless elegance. Curabitur commodo est quis felis porttitor eleifend. Sed efficitur sem mi, et feugiat</p> 
+      </div>
+     </div>
+     <div class="who-we-are-icon-content-info">
+      <div class="who-we-are-icon">
+       <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/flatIcon/vission.png">         
+      </div>
+      <div class="who-we-are-icon-content">
+       <h4>Our Vission</h4>
+       <p>Discover a sanctuary where sun-kissed shores meet timeless elegance. Curabitur commodo est quis felis porttitor eleifend. Sed efficitur sem mi, et feugiat</p> 
+      </div>
+     </div>
+   </div>
+    <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12">
+     <div class="who-we-are-info-img-area">
+      <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/aboutsImg/whoWeAreImg.png">
+     </div> 
+   </div>
+  </div>
+ </div> 
+</section>
+
+<!--about us section end here-->
+
+
+
+
+<!--why choose us section start here-->
+
+<section class="why-choose-info-main-area">
+ <div class="why-choose-content-detail-info"> 
+ <div class="container">
+  <div class="row">
+   <div class="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12">
+    <div class="inner-common-heading-info heading-center-content">
+      <h5>Why Choose Us</h5>
+      <h2>What Makes Us Different</h2> 
+     </div> 
+   </div>  
+   <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-6">
+    <div class="why-choose-box-info">
+     <h5><i class="fa-solid fa-house-user"></i> Curated Room Selection</h5>
+     <p>Quis si nostra elementum leo nunc aenean justo nascetur ac hac. Dui curabitur molestie viverra at pretium.</p>  
+    </div>
+   </div>
+   <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-6">
+    <div class="why-choose-box-info">
+     <h5><i class="fa-solid fa-square-check"></i> Trusted Company</h5>
+     <p>Quis si nostra elementum leo nunc aenean justo nascetur ac hac. Dui curabitur molestie viverra at pretium.</p>  
+    </div>
+   </div>
+   <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-6">
+    <div class="why-choose-box-info">
+     <h5><i class="fa-solid fa-money-check-dollar"></i> Best Price Guarantee</h5>
+     <p>Quis si nostra elementum leo nunc aenean justo nascetur ac hac. Dui curabitur molestie viverra at pretium.</p>  
+    </div>
+   </div>
+   <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-6">
+    <div class="why-choose-box-info">
+     <h5><i class="fa-solid fa-utensils"></i> Restaurant</h5>
+     <p>Quis si nostra elementum leo nunc aenean justo nascetur ac hac. Dui curabitur molestie viverra at pretium.</p>  
+    </div>
+   </div>
+   <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-6">
+    <div class="why-choose-box-info">
+     <h5><i class="fa-solid fa-dumbbell"></i> Fitness Center</h5>
+     <p>Quis si nostra elementum leo nunc aenean justo nascetur ac hac. Dui curabitur molestie viverra at pretium.</p>  
+    </div>
+   </div>
+   <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-6">
+    <div class="why-choose-box-info">
+     <h5><i class="fa-solid fa-location-dot"></i> Best Locations</h5>
+     <p>Quis si nostra elementum leo nunc aenean justo nascetur ac hac. Dui curabitur molestie viverra at pretium.</p>  
+    </div>
+   </div>
+  </div>
+ </div> 
+</div>
+</section>
+<!--why choose us section end here-->
+
+
+
+
+
+<!--what we do section start here-->
+
+<section class="what-we-do-info-main-area">
+ <div class="container">
+  <div class="row">
+   <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12">
+    <div class="what-we-do-info-img-area">
+     <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/aboutsImg/whoWeAreImg.png"> 
+    </div>
+   </div>
+   <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12">
+    <div class="inner-common-heading-info">
+      <h5>What do we offer</h5>
+      <h2>The Service quality in the hospitality industry becomes most important factors</h2> 
+     </div> 
+    <div class="what-we-do-content-info-area">
+     <p>Service quality in the hospitality industry becomes one of the most important factors for gaining a sustainable competitive advantage and customers’ confidence in the highly competitive marketplace</p> 
+    </div> 
+    <div class="what-we-do-icon-content-info">
+      <div class="what-we-do-icon">
+       <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/flatIcon/quality.png">         
+      </div>
+      <div class="what-we-do-icon-content">
+       <h4>Service Quality</h4>
+       <p>A successful hotel delivers excellent quality service to customers, and service quality is considered the life of the hotel.</p> 
+      </div>
+     </div>
+     <div class="what-we-do-icon-content-info">
+      <div class="what-we-do-icon">
+       <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/flatIcon/staff.png">         
+      </div>
+      <div class="what-we-do-icon-content">
+       <h4>Friendly Staff</h4>
+       <p>Happy customers are loyal customers. Not only is it important for we to provide stellar service, but awesome products as well.</p> 
+      </div>
+     </div>
+     <div class="what-we-do-icon-content-info">
+      <div class="what-we-do-icon">
+       <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/flatIcon/customer.png">         
+      </div>
+      <div class="what-we-do-icon-content">
+       <h4>Customer Satisfaction</h4>
+       <p>Customer satisfaction is a psychological concept that involves the feeling of well-being and pleasure that results from obtaining what one hopes for and expects.</p> 
+      </div>
+     </div>
+   </div>
+  </div>
+  </div> 
+</section>
+
+<!--what we do section end here-->
+
+
+
+
+<!--mobile app section start here-->
+
+<section class="mobile-app-info-main-area">
+ <div class="container">
+  <div class="row">
+   <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12"> 
+    <div class="inner-common-heading-info">
+      <h5>Download our App</h5>
+      <h2>Stay connected with your customers</h2> 
+     </div>
+     <div class="mobile-app-content-info">
+      <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. At, alias, corporis! Dicta facere ipsa doloremque autem dolores et, quibusdam delectus saepe omnis earum, sequi explicabo vero similique praesentium officia quasi animi at ad eum ratione qui voluptatum optio. Quod, error excepturi fugit.</p>
+      <p>In nulla consectetur delectus veritatis deserunt quae corporis autem fuga a expedita perspiciatis natus aperiam dolorum beatae, labore facilis nostrum ad maxime deleniti at incidunt accusamus dolores saepe. Reprehenderit ipsam, maiores inventore consequatur deserunt</p>
+     </div>
+     <div class="app-store-icon-info">
+      <a href="https://play.google.com/store/games?hl=en" target="_blank">
+        <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/appImg/google-play-new.png">
+      </a>
+      <a href="https://www.apple.com/app-store/" target="_blank">
+        <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/appImg/app-store-new.png">
+      </a>
+     </div>
+     <div class="all-app-use-detail">
+      <p>*Available on iPhone, iPad and all Android devices</p>
+     </div>
+   </div>
+   <div class="col-xl-6 col-lg-6 col-md-6 col-sm-12 col-xs-12"> 
+    <div class="mobile-app-info-img-area">
+     <img src="https://itdevelopmentservices.com/design_website/cheap-rooms-mv/assets/images/appImg/welcome-mockup.png"> 
+    </div>
+   </div>
+  </div>
+ </div> 
+</section>
+<!--mobile app section end here-->
+
+
+<!-- Footer section start here-->
+
+</body>
+<!-- Bootstrap bundle js -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+</html>
+

@@ -35,10 +35,16 @@ const AdminSchema = new mongoose.Schema({
         required: [true, 'Role is required']
     },
 
+    permissions: {
+        type: [String],     // Array of strings
+        default: []         // Default empty array
+    },
+
     status: { type: String, enum: ['Inactive', 'Active'], default: 'Active' },
 
     adminImage: {
-        type: String
+        type: String,
+        trim: true,
     },
 
     otp: {
